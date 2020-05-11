@@ -167,11 +167,11 @@ class CamDiag:
         #Check if CAM baseline climatology files will be calculated:
         if not self.__basic_info['compare_obs']:
             try:
-                if namelist['diag_cam_baseline_climo']['calc_bl_cam_climo']:
+                if namelist['diag_cam_baseline_climo']['calc_cam_climo']:
                     #If so, then add CAM baseline climatology info to object:
                     self.__cam_bl_climo_info = read_namelist_obj(namelist, 'diag_cam_baseline_climo')
             except:
-                raise KeyError("'calc_bl_cam_climo' in 'diag_cam_baseline_climo' not found in namelist file.  Please see 'example_namelist.yaml'.")
+                raise KeyError("'calc_cam_climo' in 'diag_cam_baseline_climo' not found in namelist file.  Please see 'example_namelist.yaml'.")
 
         #Add averaging script names:
         self.__time_averaging_scripts = read_namelist_obj(namelist, 'time_averaging_scripts')
