@@ -221,7 +221,7 @@ def plot_map_and_save(wks, mdlfld, obsfld, diffld, **kwargs):
     maxval = np.max([np.max(mdlfld), np.max(obsfld)])
     normfunc, mplv = use_this_norm()
     if ((minval < 0) and (0 < maxval)) and mplv > 2:
-        norm1 = normfunc(vmin=minval, vcenter=0.0, vmax=maxval)
+        norm1 = normfunc(vmin=minval, vmax=maxval, vcenter=0.0)
         cmap1 = 'coolwarm'
     else:
         norm1 = mpl.colors.Normalize(vmin=minval, vmax=maxval)

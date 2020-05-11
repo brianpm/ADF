@@ -53,12 +53,12 @@ def averaging_example(case_name, input_ts_loc, output_loc, var_list):
         else:
             cam_ts_data = xr.open_mfdataset(ts_files, decode_times=True, combine='by_coords')
 
-        #Average time dimension over time bands, if the bands exist:
+        #Average time dimension over time bounds, if bounds exist:
         if 'time_bnds' in cam_ts_data:
             time = cam_ts_data['time']
             time = xr.DataArray(cam_ts_data['time_bnds'].mean(dim='nbnd').values, dims=time.dims, attrs=time.attrs)
-            cam_ts_data['time'] = time 
-            cam_ts_data.assign_coords({'time':time})
+            cam_ts_data['time'] = time
+            cam_ts_data.assign_coords(time=time)
             cam_ts_data = xr.decode_cf(cam_ts_data)
 
         #Group time series values by month, and average those months together:
