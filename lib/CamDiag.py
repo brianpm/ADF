@@ -148,7 +148,7 @@ class CamDiag:
         """
         Initalize CAM diagnostics object.
         """
-
+        config_file = os.path.expanduser(config_file)  # expand ~
         #Check that YAML file actually exists:
         if not os.path.exists(config_file):
             raise FileNotFoundError("'{}' file not found.".format(config_file))
@@ -218,7 +218,7 @@ class CamDiag:
         if cam_climo_dict['calc_cam_climo']:
 
             #Notify user that script has started:
-            print("  Generating CAM time series files...")
+            print("  Generating CAM time series files... [baseline={}]".format(baseline))
 
             #Extract cam time series directory:
             ts_dir = cam_climo_dict['cam_ts_loc']
@@ -253,10 +253,12 @@ class CamDiag:
                 ts_file_list = glob.glob(ts_outfil_str)
 
                 #If files exist, then check if over-writing is allowed:
-                if ts_file_list:
+                if Path(ts_outfil_str).is_file():
                     if not cam_climo_dict['cam_overwrite_ts']:
                         #If not, then simply skip this variable:
                         continue
+                    else:
+                        print("\t \t ** time series file exists, but we will overwrite it.")
 
                 #Generate filename without suffix:
                 first_in  = Path(hist_files[0])

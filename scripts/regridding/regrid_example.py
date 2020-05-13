@@ -52,7 +52,7 @@ def regrid_example(case_name, input_climo_loc, output_loc,
 
     # probably want to do this one variable at a time:
     for var in var_list:
-
+        print("\t [\u25B6] regridding {} (known targets: {})".format(var, len(target_list)))
         #loop over regridding targets:
         for target in target_list:
 
@@ -93,15 +93,26 @@ def regrid_example(case_name, input_climo_loc, output_loc,
                 #Extract grid info from target data:
                 if 'time' in tclim_ds.coords:
                     tgrid = tclim_ds.isel(time=0).squeeze()
+                else:
+                    tgrid = tclim_ds
 
                 #Regrid model data to match target grid:
                 rgdata = regrid_data(mdata, tgrid, method=1)
+
+                # Collect any of the "special" variables:
+                rgdata = rgdata.to_dataset()
+                for special in ["hyam", "hybm", "hyai", "hybi", "P0"]:
+                    if special in mclim_ds:
+                        rgdata[special] = mclim_ds[special]
+                # also check for PS in mdata... regrid it when found:
+                if "PS" in mclim_ds:
+                    rgdata['PS'] = regrid_data(mclim_ds['PS'], tgrid, method=1)
 
                 #Write re-gridded data to output file:
                 save_to_nc(rgdata, regridded_file_loc)
 
     #Notify user that script has ended:
-    print("  ...CAM climatologies have been regridded successfully.")
+    print("[\u2705]...CAM climatologies have been regridded successfully.")
 
 #################
 #Helper functions

@@ -37,6 +37,14 @@ def averaging_example(case_name, input_ts_loc, output_loc, var_list):
 
     #Loop over CAM output variables:
     for var in var_list:
+        print("\t \u25B6 climo calculation for {}".format(var))
+        #Create name of climatology output file (which includes the full path):
+        output_file = output_location / "{}_{}_climo.nc".format(case_name,var)
+        # don't make a climo file if it is there:
+        # NOTE: overwriting option should be specified from the config file.
+        if Path(output_file).is_file():
+            print("\t \u274C climo file exists for {}, skipping it.".format(var))
+            continue
 
         #Create list of time series files present for variable:
         ts_filenames = '{}.*{}*.nc'.format(case_name, var)
@@ -49,9 +57,9 @@ def averaging_example(case_name, input_ts_loc, output_loc, var_list):
 
         #Read in files via xarray (xr):
         if len(ts_files) == 1:
-            cam_ts_data = xr.open_dataset(ts_files[0], decode_times=True)
+            cam_ts_data = xr.open_dataset(ts_files[0], decode_times=False)
         else:
-            cam_ts_data = xr.open_mfdataset(ts_files, decode_times=True, combine='by_coords')
+            cam_ts_data = xr.open_mfdataset(ts_files, decode_times=False, combine='by_coords')
 
         #Average time dimension over time bounds, if bounds exist:
         if 'time_bnds' in cam_ts_data:
@@ -60,15 +68,26 @@ def averaging_example(case_name, input_ts_loc, output_loc, var_list):
             cam_ts_data['time'] = time
             cam_ts_data.assign_coords(time=time)
             cam_ts_data = xr.decode_cf(cam_ts_data)
+        else:
+            # rely on the time dimension being correct
+            cam_ts_data = xr.decode_cf(cam_ts_data)
 
         #Group time series values by month, and average those months together:
-        cam_climo_data = cam_ts_data.groupby('time.month').mean(dim='time')
+        climo_data = cam_ts_data[var].groupby('time.month').mean(dim='time')
+        if "PS" in cam_ts_data:
+            ps_climo = cam_ts_data['PS'].groupby('time.month').mean(dim='time')
+            cam_climo_data = xr.merge([climo_data, ps_climo])
+        else:
+            cam_climo_data = climo_data.to_dataset()
+        # there are some special variables that should be carried along
+        for special in ['hyam', 'hybm', 'P0', 'hyai', 'hybi']:
+            if special in cam_ts_data:
+                cam_climo_data[special] = cam_ts_data[special]
 
         #Rename "months" to "time":
         cam_climo_data = cam_climo_data.rename({'month':'time'})
 
-        #Create name of climatology output file (which includes the full path):
-        output_file = output_location / "{}_{}_climo.nc".format(case_name,var)
+
 
         #Set netCDF encoding method (deal with getting non-nan fill values):
         enc_dv = {xname: {'_FillValue': None, 'zlib': True, 'complevel': 4} for xname in cam_climo_data.data_vars}
@@ -79,4 +98,4 @@ def averaging_example(case_name, input_ts_loc, output_loc, var_list):
         cam_climo_data.to_netcdf(output_file, format='NETCDF4', encoding=enc)
 
     #Notify user that script has ended:
-    print("  ...CAM climatologies have been calculated successfully.")
+    print("[\u2705]...CAM climatologies have been calculated successfully.")
