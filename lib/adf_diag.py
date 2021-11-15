@@ -342,7 +342,7 @@ class AdfDiag(AdfConfig):
             module_name = func_name #+'.py'
 
         # note: when we use importlib, specify the module name without the ".py" extension.
-        module = importlib.import_module(func_name)
+        module = importlib.import_module(module_name)
         if hasattr(module, func_name) and callable(getattr(module, func_name)):
             func = getattr(module, func_name)
 
