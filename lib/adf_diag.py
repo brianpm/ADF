@@ -253,11 +253,12 @@ class AdfDiag(AdfConfig):
                 raise TypeError("Provided script must either be a string or a dictionary.")
 
             func_script = func_name + '.py'  # default behavior: Add file suffix to script name
+            module_name = func_name  # assume function & module share name
             if has_opt:
                 if 'module' in opt:
                     func_script = opt['module'] + ".py"
-                    # rename func_script so we know to look in module namespace:
-                    func_name = ".".join([opt['module'], func_name])
+                    module_name = opt['module']
+
 
             #Create full path to function script:
             func_script_path = \
@@ -316,7 +317,7 @@ class AdfDiag(AdfConfig):
             #Call function
             self.__function_caller(func_name, func_args,
                                    func_kwargs=func_kwargs,
-                                   module_name=func_name)
+                                   module_name=module_name)
 
     #########
 
