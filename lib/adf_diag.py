@@ -255,7 +255,7 @@ class AdfDiag(AdfConfig):
             func_script = func_name + '.py'  # default behavior: Add file suffix to script name
             if has_opt:
                 if 'module' in opt:
-                    func_script = opt['module']
+                    func_script = opt['module'] + ".py"
                     # rename func_script so we know to look in module namespace:
                     func_name = ".".join([opt['module'], func_name])
 
