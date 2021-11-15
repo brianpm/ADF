@@ -295,6 +295,7 @@ class AdfDiag(AdfConfig):
                     emsg = "Function argument list elements must be of type string."
                     assert all(isinstance(item, str) for item in opt['args']), emsg
                     func_args = list()  # start over
+                    print(locals)
                     for variable_to_check in opt['args']:
                         if variable_to_check in locals():
                             func_args.append(locals()[variable_to_check])
