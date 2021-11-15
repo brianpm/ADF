@@ -257,7 +257,7 @@ class AdfDiag(AdfConfig):
                 if 'module' in opt:
                     func_script = opt['module']
                     # rename func_script so we know to look in module namespace:
-                    func_name = ".".join(opt['module'], func_name)
+                    func_name = ".".join([opt['module'], func_name])
 
             #Create full path to function script:
             func_script_path = \
