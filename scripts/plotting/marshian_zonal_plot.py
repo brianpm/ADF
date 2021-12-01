@@ -5,6 +5,30 @@
 
 # There are many ways to build up the plots. I like to have a bunch of small functions, but it's just a style choice.
 
+
+# Libraries we expect to be available:
+from pathlib import Path
+import warnings
+import xarray as xr
+import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
+
+def marshian_zonal_plot(adfobj):
+    """This function ONLY get the information from ADF and then runs the functions below."""
+    basic_info_dict = adfobj.read_config_var("diag_basic_info")
+    case1_dict = adfobj.read_config_var("diag_cam_climo")
+    case2_dict = adfobj.read_config_var("diag_cam_baseline_climo")
+    case1_name = case1_dict["cam_case_name"]
+    case1_loc = case1_dict["cam_ts_loc"]
+    case2_name = case2_dict["cam_case_name"]
+    case2_loc = case2_dict["cam_ts_loc"]
+    plot_location = basic_info_dict['cam_diag_plot_loc']
+    plot_log_u_t(case1_name, case1_loc, case2_name, case2_loc, plot_location)
+    
+    
+
 def plot_log_u_t(case1_name, case1_loc, case2_name, case2_loc, plot_location):
     """The driver for this module. 
        This is the function that needs to interact with ADF.
@@ -30,8 +54,13 @@ def plot_log_u_t(case1_name, case1_loc, case2_name, case2_loc, plot_location):
 
     for v in variables:
         # USE OUR HELPER SCRIPT TO LOAD DATASETS
-        case1ds = _load_dataset(case1_loc, case1, v, other_name=case2_name)
-        case2ds = _load_dataset(case2_loc, case2, v, other_name=case1_name)
+        case1ds = _load_dataset(case1_loc, case1_name, v, other_name=case2_name)
+        case2ds = _load_dataset(case2_loc, case2_name, v, other_name=case1_name)
+        ## just in case
+        if case1ds is None:
+            case1ds = _load_dataset_lastditch(case1_loc, case1_name)
+        if case2ds is None:
+            case2ds = _load_dataset_lastditch(case2_loc, case2_name)
 
         # EXTRACT THE DataArray
         case1data = case1ds[v].squeeze()  # squeeze in case of degenerate dimensions
@@ -44,9 +73,22 @@ def plot_log_u_t(case1_name, case1_loc, case2_name, case2_loc, plot_location):
         case1data = case1data.mean(dim='lon')
         case2data = case2data.mean(dim='lon')
         
+        # get monthly climatology
+        case1data = case1data.groupby("time.month").mean(dim='time')
+        case2data = case2data.groupby("time.month").mean(dim='time')
+        case1data = case1data.rename({"month":"time"})
+        case2data = case2data.rename({"month":"time"})
+        
+        print(case1data)
+        
         # Apply seasonal average (function included below should probably be included in ADF library)
         case1seasons = _seasonal_average(case1data)
         case2seasons = _seasonal_average(case2data)
+
+        
+        # in case:
+        case1seasons = case1seasons.compute()
+        case2seasons = case2seasons.compute()
 
         # call the plot function:
         # plots functions should just take data to be plotted, and should not do much computation
@@ -129,6 +171,7 @@ def _load_dataset(data_loc, case_name, variable, other_name=None):
     ADF creates climo files that 
     
     """
+
     dloc    = Path(data_loc)
 
     # a hack here: ADF uses different file names for "reference" case and regridded model data,
@@ -138,7 +181,7 @@ def _load_dataset(data_loc, case_name, variable, other_name=None):
     else:
         # in case "other" is not known, just look for it
         fils = sorted(list(dloc.glob("*_{}_{}_*.nc".format(case_name, variable))))
-    if len(clim_fils) == 0:
+    if len(fils) == 0:
         fils = sorted(list(dloc.glob("{}_{}_*.nc".format(case_name, variable))))
 
     if len(fils) == 0:
@@ -166,11 +209,25 @@ def _seasonal_average(darr):
     for s in seasons:
         savg[s] = darr.sel(time=seasons[s]).mean(dim='time')
 
-    c = xr.concat(msd.values(), dim='season')
+    c = xr.concat(savg.values(), dim='season')
     c = c.assign_coords({"season":list(seasons.keys())})
 
     return c
 
 
 def _plot_file_name(c1, c2, variable, plocation):
-    return Path(plocation) / f"{v}_djf_jja_zonal_log.png"
+    return Path(plocation) / f"{variable}_djf_jja_zonal_log.png"
+
+
+
+def _load_dataset_lastditch(c_loc, c_nam):
+    from pathlib import Path
+    dloc = Path(c_loc)
+    fils = sorted(list(dloc.glob(f"{c_nam}*.nc")))
+    if len(fils) == 0:
+        raise IOError("Could not find dataset")
+    elif len(fils) == 1:
+        return xr.open_dataset(fils[0])
+    else:
+        return xr.open_mfdataset(fils)
+    
