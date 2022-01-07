@@ -2,6 +2,12 @@
 Module: cam_taylor_diagram
 
 Provides a Taylor diagram following the AMWG package. Uses spatial information only.
+
+This module, for better or worse, provides both the computation and plotting functionality. 
+It depends on an ADF instance to obtain the `climo` files. 
+It is designed to have one "reference" case (could be observations) and arbitrary test cases. 
+When multiple test cases are provided, they are plotted with different colors. 
+
 '''
 
 #
@@ -88,8 +94,15 @@ def cam_taylor_diagram(adfobj):
     var_list = ['SLP', 'SWCF', 'LWCF', 
                 'TropicalLandPrecip', 'TropicalOceanPrecip', 'EquatorialPacificStress', 
                 'U300', 'ColumnRelativeHumidity', 'ColumnTemperature']
+
+    # NOTE: 
+    # Strategy here is to go through the list of variables and cases and get the statistics 
+    # necessary for the plot. Build up the data for the plot incrementally, which should
+    # provide reasonable performance (especially reduced memory pressure) when there are
+    # many cases to deal with. 
     
     # generate the statistics
+
 
     # send statistics to plot
 

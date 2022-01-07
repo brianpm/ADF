@@ -520,7 +520,11 @@ def plot_zonal_mean_and_save(wks, adata, apsurf, ahya, ahyb, bdata, bpsurf, bhya
             colorbar_opt.update(kwargs['mpl'].get('colorbar',{}))
 
         # Generate zonal plot:
-        diffnorm = normfunc(vmin=min(np.min(diff),-1*np.max(diff)), vcenter=0.0, vmax=np.max(diff))
+        try:
+            diffnorm = normfunc(vmin=min(np.min(diff),-1*np.max(diff)), vcenter=0.0, vmax=np.max(diff))
+        except NotImplementedError:
+            diff = diff.compute()  # if diff is a dask array it raises error b/c no .item() method.
+            diffnorm = normfunc(vmin=min(np.min(diff),-1*np.max(diff)), vcenter=0.0, vmax=np.max(diff))
         fig, ax = plt.subplots(nrows=3, constrained_layout=True, sharex=True, sharey=True,**subplots_opt)
         img0, ax[0] = zonal_plot(adata['lat'], azm, ax=ax[0], norm=norm1,cmap=cmap1,levels=levels1,**contourf_opt)
         img1, ax[1] = zonal_plot(bdata['lat'], bzm, ax=ax[1], norm=norm1,cmap=cmap1,levels=levels1,**contourf_opt)
