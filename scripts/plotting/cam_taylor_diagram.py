@@ -37,13 +37,16 @@ warnings.formatwarning = my_formatwarning
 def cam_taylor_diagram(adfobj):
     # Extract needed quantities from ADF object:
     # -----------------------------------------
-    model_rgrid_loc = adfobj.get_basic_info("cam_regrid_loc", required=True)
+    # Case names:
+    # NOTE: "baseline" == "reference" == "observations" will be called `base`
+    #       test case(s) == case(s) to be diagnosed  will be called `case` (assumes a list)
+    case_names = adfobj.get_cam_info('cam_case_name', required=True)  # Loop over these
+    # Locations for climo files
+    case_climo_loc = adfobj.get_cam_info('cam_climo_loc', required=True)
 
     # Special ADF variable which contains the output path for
     # all generated plots and tables:
     plot_location = adfobj.plot_location
-
-    case_name = adfobj.get_cam_info("cam_case_name", required=True)
 
     # CAUTION:
     # "data" here refers to either obs or a baseline simulation,
@@ -55,11 +58,11 @@ def cam_taylor_diagram(adfobj):
         data_loc = adfobj.get_basic_info("obs_climo_loc", required=True)
 
     else:
-        data_name = adfobj.get_baseline_info("cam_case_name", required=True) # does not get used, is just here as a placemarker
-        data_list = [data_name] # gets used as just the name to search for climo files HAS TO BE LIST
-        data_loc = adfobj.get_baseline_info("cam_climo_loc", required=True)
+        base_name = adfobj.get_baseline_info('cam_case_name', required=True)
+        data_list == base_name # should not be needed (?)
+        base_loc = adfobj.get_baseline_info("cam_climo_loc", required=True)
 
-    res = adfobj.variable_defaults # will be dict of variable-specific plot preferences
+    res = adfobj.variable_defaults # dict of variable-specific plot preferences
     # or an empty dictionary if use_defaults was not specified in YAML.
 
     #Set plot file type:
@@ -100,7 +103,11 @@ def cam_taylor_diagram(adfobj):
     # necessary for the plot. Build up the data for the plot incrementally, which should
     # provide reasonable performance (especially reduced memory pressure) when there are
     # many cases to deal with. 
-    
+
+    for v in var_list:
+        # get the baseline field
+        base_x = _retrieve(v, base_loc)
+
     # generate the statistics
 
 
@@ -123,17 +130,85 @@ def vertical_average(fld, ps):
     # return (1/g) * sum(fld * del_pressure) / sum(del_pressure)
     pass
 
-def get_tropical_land_precip():
-    # get landfrac
-    # get prect 
-    # mask to only keep land locations
-    pass
 
-def get_tropical_ocean_precip():
+def find_landmask(adf, casename, location):
+    # maybe it's in the climo files, but we might need to look in the history files:
+    landfrac_fils = list(Path(location).glob(f"{casename}*_LANDFRAC_*.nc"))
+    if landfrac_fils:
+        return xr.open_dataset(landfrac_fils[0])['LANDFRAC']
+    else:
+        if casename in adf.get_cam_info('cam_case_name'):
+            hloc = adf.get_cam_info('cam_hist_loc')
+        else:
+            hloc = adf.get_baseline_info('cam_hist_loc')
+        hfils = Path(hloc).glob((f"*{casename}*.nc"))
+        if not hfils:
+            raise IOError(f"No history files in expected location: {hloc}")
+        k = 0
+        for h in hfils:
+            dstmp = xr.open_dataset(h)
+            if 'LANDFRAC' in dstmp:
+                print(f"Good news, found LANDFRAC in file: {h}")
+                return dstmp['LANDFRAC']
+            else:
+                k += 1
+        else:
+            raise IOError(f"Checked {k} files, but did not find LANDFRAC in any of them.")
+    # should not reach past the `if` statement without returning landfrac or raising exception.
+
+
+def get_prect(casename, location):
+    # look for prect first:
+    fils = sorted(list(Path(location).glob(f"{casename}*_PRECT_*.nc")))
+    if len(fils) == 0:
+        print("Need to derive PRECT = PRECC + PRECL")
+        fils1 = sorted(list(Path(location).glob(f"{casename}*_PRECC_*.nc")))
+        fils2 = sorted(list(Path(location).glob(f"{casename}*_PRECL_*.nc")))
+        if (len(fils1) == 0) or (len(fils2) == 0):
+            raise IOError("Could not find PRECC or PRECL")
+        else:
+            if len(fils1) == 1:
+                precc = xr.open_dataset(fils1[0])['PRECC']
+                precl = xr.open_dataset(fils2[0])['PRECL']
+                prect = precc + precl 
+            else:
+                print("Need to deal with mult-file case.")
+    elif len(fils) > 1:
+        prect = xr.open_mfdataset(fils)['PRECT'].load()  # do we ever expect climo files split into pieces? 
+    else:
+        prect = xr.open_dataset(fils[0])['PRECT']
+    return prect
+
+
+def get_tropical_land_precip(adf, casename, location):
     # get landfrac
+    landfrac = find_landmask(adf, casename, location)
+    if landfrac is None:
+        raise ValueError("No landfrac returned")
     # get prect 
+    prect = get_prect(casename, location)
+    # mask to only keep land locations
+    prect = xr.DataArray(np.where(landfrac >= .95, prect, np.nan),
+                         dims=prect.dims,
+                         coords=prect.coords,
+                         attrs=prect.attrs)  # threshold could be 1
+    return prect.sel(lat=slice(-30,30))
+
+
+def get_tropical_ocean_precip(adf, casename, location):
+    # get landfrac
+    landfrac = find_landmask(adf, casename, location)
+    if landfrac is None:
+        raise ValueError("No landfrac returned")
+    # get prect 
+    prect = get_prect(casename, location)
     # mask to only keep ocean locations
-    pass
+    prect = xr.DataArray(np.where(landfrac <= 0, prect, np.nan),
+                         dims=prect.dims,
+                         coords=prect.coords,
+                         attrs=prect.attrs)  
+    return prect.sel(lat=slice(-30,30))
+
 
 def get_u_at_plev():
     # parse input to know variable and pressure value
@@ -166,6 +241,24 @@ def get_derive_func(fld):
     'VIRelativeHumidity': get_virh,
     'VITemperature': get_vit,
     }
+
+
+def _retrieve(adfobj, variable, casename, location):
+    v_to_derive = ['TropicalLandPrecip', 'TropicalOceanPrecip', 'EquatorialPacificStress', 
+                'U300', 'ColumnRelativeHumidity', 'ColumnTemperature']
+    if variable not in v_to_derive:
+        fils = sorted(list(Path(location).glob(f"{casename}*_{variable}_*.nc")))
+        print(fils)
+        if len(fils) == 0:
+            raise ValueError("something went wrong")
+        elif len(fils) > 1:
+            ds = xr.open_mfdataset(fils)  # do we ever expect climo files split into pieces? 
+        else:
+            ds = xr.open_dataset(fils[0])
+    else:
+        func = get_derive_func(variable)
+        ds = func(adfobj, casename, location)
+    return ds     
 
 def weighted_correlation(x, y, weights):
     # TODO: since we expect masked fields (land/ocean), need to allow for missing values (maybe works already?)
@@ -214,8 +307,8 @@ def taylor_stats(casedata, refdata):
     correlation = {}
     ratio = {}
     bias = {}
-    for v in a_ann:
-        vcorr, vratio, vbias = taylor_stats_single(casedata[v], refdata[v])
+    for case_idx, case in casedata:
+        vcorr, vratio, vbias = taylor_stats_single(casedata[], refdata[v])
         correlation[v] = vcorr
         ratio[v] = vratio
         bias[v] = vbias
