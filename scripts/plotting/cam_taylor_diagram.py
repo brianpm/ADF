@@ -9,7 +9,6 @@ It is designed to have one "reference" case (could be observations) and arbitrar
 When multiple test cases are provided, they are plotted with different colors. 
 
 '''
-
 #
 # --- imports and configuration ---
 #
@@ -18,12 +17,8 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 import geocat.comp as gc  # use geocat's interpolation
-
-# import plotting_functions as pf  # No need for pf unless we move general taylor diagram into there.
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-
-
 import warnings  # use to warn user about missing files.
 
 def my_formatwarning(msg, *args, **kwargs):
@@ -31,8 +26,6 @@ def my_formatwarning(msg, *args, **kwargs):
     return str(msg) + '\n'
 
 warnings.formatwarning = my_formatwarning
-
-
 #
 # --- Main Function Shares Name with Module: cam_taylor_diagram ---
 #
@@ -43,11 +36,9 @@ def cam_taylor_diagram(adfobj):
     # NOTE: "baseline" == "reference" == "observations" will be called `base`
     #       test case(s) == case(s) to be diagnosed  will be called `case` (assumes a list)
     case_names = adfobj.get_cam_info('cam_case_name', required=True)  # Loop over these
-    # Locations for climo files
     case_climo_loc = adfobj.get_cam_info('cam_climo_loc', required=True)
 
-    # Special ADF variable which contains the output path for
-    # all generated plots and tables:
+    # ADF variable which contains the output path for plots and tables:
     plot_location = adfobj.plot_location
     if not plot_location:
         plot_location = adfobj.get_basic_info("cam_diag_plot_loc")
@@ -74,7 +65,6 @@ def cam_taylor_diagram(adfobj):
         data_name = "obs"  # does not get used, is just here as a placemarker
         data_list = adfobj.read_config_var("obs_type_list")  # Double caution!
         data_loc = adfobj.get_basic_info("obs_climo_loc", required=True)
-
     else:
         data_name = adfobj.get_baseline_info('cam_case_name', required=True)
         data_list = data_name # should not be needed (?)
@@ -89,8 +79,6 @@ def cam_taylor_diagram(adfobj):
     basic_info_dict = adfobj.read_config_var("diag_basic_info")
     plot_type = basic_info_dict.get('plot_type', 'png')
 
-    #-----------------------------------
-
     #Set seasonal ranges:
     seasons = {"ANN": np.arange(1,13,1),
                "DJF": [12, 1, 2],
@@ -98,24 +86,17 @@ def cam_taylor_diagram(adfobj):
                "MAM": [3, 4, 5],
                "SON": [9, 10, 11]}
 
-
-
-    # define the variables that need to be included
-    # Derived: TropicalLandPrecip, TropicalOceanPrecip, EquatorialPacificStress
-    # Semi-derived: U300
-    #               ColumnRelativeHumidity and ColumnTemperature are WEIGHTED VERTICAL AVERAGE (All Levels)
+    # TAYLOR PLOT VARIABLES:    
     var_list = ['PSL', 'SWCF', 'LWCF', 
                 'TropicalLandPrecip', 'TropicalOceanPrecip', 
                 'Land2mTemperature', 'EquatorialPacificStress', 
                 'U300', 'ColumnRelativeHumidity', 'ColumnTemperature']
 
     case_colors = [mpl.cm.tab20(i) for i, case in enumerate(case_names)] # change color for each case
-
     #
     # LOOP OVER SEASON
     #
     for s in seasons:
-
         # hold the data in a DataFrame for each case
         # variable | correlation | stddev ratio | bias
         df_template = pd.DataFrame(index=var_list, columns=['corr', 'ratio', 'bias'])
@@ -139,15 +120,12 @@ def cam_taylor_diagram(adfobj):
             ax = plot_taylor_data(ax, result_by_case[case], case_color=case_colors[i], use_bias=True)
 
         ax = taylor_plot_finalize(ax, case_names, case_colors, needs_bias_labels=True)
-        
         # add text with variable names:
         txtstrs = [f"{i+1} - {v}" for i, v in enumerate(var_list)]
         fig.text(0.9, 0.9, "\n".join(txtstrs), va='top')
-
         out_file_name = plot_loc / f"amwg_taylor_diagram_{s}.{plot_type}"
         fig.savefig(out_file_name, bbox_inches='tight')
         print(f"Taylor Diagram: completed {s}. File: {out_file_name}")
-
     return
 
 #
@@ -158,29 +136,21 @@ def cam_taylor_diagram(adfobj):
 
 def _pressure_from_hybrid(psfc, hya, hyb, p0=100000.):
     """Calculate pressure at the hybrid levels."""
-
     # p(k) = hya(k) * p0 + hyb(k) * psfc
-
     # This will be in Pa
     return hya * p0 + hyb * psfc
 
 
 def vertical_average(fld, ps, acoef, bcoef):
     """Calculate weighted vertical average using trapezoidal rule. Uses full column."""
-    # get pressure field
     pres = _pressure_from_hybrid(ps, acoef, bcoef)
-    # get del_pressure
-    # return sum(fld * del_pressure) / sum(del_pressure)
-
     # integral of del_pressure turns out to be just the average of the square of the boundaries:
     # -- assume lev is a coordinate and is nominally in pressure units
     maxlev = pres['lev'].max().item()
     minlev = pres['lev'].min().item()
     dp_integrated = 0.5 * (pres.sel(lev=maxlev)**2 - pres.sel(lev=minlev)**2)
-
     levaxis = fld.dims.index('lev')  # fld needs to be a dataarray
     assert isinstance(levaxis, int), f'the axis called lev is not an integer: {levaxis}'
-
     fld_integrated = np.trapz(fld * pres, x=pres, axis=levaxis)
     return fld_integrated / dp_integrated
 
@@ -238,11 +208,9 @@ def get_prect(casename, location, **kwargs):
 
 
 def get_tropical_land_precip(adf, casename, location, **kwargs):
-    # get landfrac
     landfrac = find_landmask(adf, casename, location)
     if landfrac is None:
         raise ValueError("No landfrac returned")
-    # get prect 
     prect = get_prect(casename, location)
     # mask to only keep land locations
     prect = xr.DataArray(np.where(landfrac >= .95, prect, np.nan),
@@ -253,11 +221,9 @@ def get_tropical_land_precip(adf, casename, location, **kwargs):
 
 
 def get_tropical_ocean_precip(adf, casename, location, **kwargs):
-    # get landfrac
     landfrac = find_landmask(adf, casename, location)
     if landfrac is None:
         raise ValueError("No landfrac returned")
-    # get prect 
     prect = get_prect(casename, location)
     # mask to only keep ocean locations
     prect = xr.DataArray(np.where(landfrac <= 0, prect, np.nan),
@@ -438,9 +404,7 @@ def plot_taylor_data(wks, df, **kwargs):
     """Apply data on top of the Taylor Diagram Axes.
     
         wks -> Axes object, probably from taylor_plot_setup
-
         df  -> DataFrame holding the Taylor stats.
-
         kwargs -> optional arguments
           look for 'use_bias'
           look for 'case_color'
@@ -475,10 +439,10 @@ def plot_taylor_data(wks, df, **kwargs):
             wks.plot(theta, row['ratio'], marker='o', markersize=16, color=color)
         annos.append(f"{k} - {ndx.replace('_','')}")
         wks.annotate(str(k), (theta, row['ratio']), ha='center', va='bottom', 
-                            xytext=(0,5), textcoords='offset points', fontsize='x-large', color=color)
+                            xytext=(0,5), textcoords='offset points', fontsize='x-large', 
+                            color=color)
         k += 1  # increment the annotation number (THIS REQUIRES CASES TO HAVE SAME ORDER IN DataFrame)
     return wks
-
 
 
 def taylor_plot_finalize(wks, casenames, casecolors, needs_bias_labels=True):
@@ -489,10 +453,16 @@ def taylor_plot_finalize(wks, casenames, casecolors, needs_bias_labels=True):
         casecolors -> list of colors for the cases
         needs_bias_labels -> Bool, if T make the legend for the bias-sized markers.
     """
-    textstr = "\n".join(casenames)
-    props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-    wks.text(0.05, 0.05, textstr, transform=wks.transAxes, fontsize=11, bbox=props)
-
+    # CASE LEGEND -- Color-coded
+    bottom_of_text = 0.05
+    number_of_lines = len(casenames)
+    height_of_lines = 0.03
+    n = 0
+    for s, c in zip(casenames, casecolors):
+            text = wks.text(0.052, bottom_of_text + n*height_of_lines, s, 
+            color=c, ha='left', va='bottom', transform=wks.transAxes, fontsize=11)
+            n += 1
+    # BIAS LEGEND
     if needs_bias_labels:
         # produce an info-box showing the markers/sizes based on bias
         from matplotlib.lines import Line2D
