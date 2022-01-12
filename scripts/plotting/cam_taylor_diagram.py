@@ -51,6 +51,20 @@ def cam_taylor_diagram(adfobj):
     plot_location = adfobj.plot_location
     if not plot_location:
         plot_location = adfobj.get_basic_info("cam_diag_plot_loc")
+    if isinstance(plot_location, list):
+        for pl in plot_location:
+            plpth = Path(pl)
+            #Check if plot output directory exists, and if not, then create it:
+            if not plpth.is_dir():
+                print("    {} not found, making new directory".format(pl))
+                plpth.mkdir(parents=True)
+        if len(plot_location) == 1:
+            plot_loc = Path(plot_location[0])
+        else:
+            print(f"Ambiguous plotting location since all cases go on same plot. Will put them in first location: {plot_location[0]}")
+            plot_loc = Path(plot_location[0])
+    else:
+        plot_loc = Path(plot_location)
 
     # CAUTION:
     # "data" here refers to either obs or a baseline simulation,
@@ -75,8 +89,6 @@ def cam_taylor_diagram(adfobj):
     basic_info_dict = adfobj.read_config_var("diag_basic_info")
     plot_type = basic_info_dict.get('plot_type', 'png')
 
-    dclimo_loc    = Path(data_loc)
-    plot_loc      = Path(plot_location)
     #-----------------------------------
 
     #Set seasonal ranges:
@@ -86,10 +98,6 @@ def cam_taylor_diagram(adfobj):
                "MAM": [3, 4, 5],
                "SON": [9, 10, 11]}
 
-    #Check if plot output directory exists, and if not, then create it:
-    if not plot_loc.is_dir():
-        print("    {} not found, making new directory".format(plot_loc))
-        plot_loc.mkdir(parents=True)
 
 
     # define the variables that need to be included
@@ -132,9 +140,13 @@ def cam_taylor_diagram(adfobj):
 
         ax = taylor_plot_finalize(ax, case_names, case_colors, needs_bias_labels=True)
         
+        # add text with variable names:
+        txtstrs = [f"{i+1} - {v}" for i, v in enumerate(var_list)]
+        fig.text(0.9, 0.9, "\n".join(txtstrs), va='top')
+
         out_file_name = plot_loc / f"amwg_taylor_diagram_{s}.{plot_type}"
         fig.savefig(out_file_name, bbox_inches='tight')
-        print(f"Taylor Diagram: completed {s}")
+        print(f"Taylor Diagram: completed {s}. File: {out_file_name}")
 
     return
 
