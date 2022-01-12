@@ -16,6 +16,8 @@ When multiple test cases are provided, they are plotted with different colors.
 from pathlib import Path
 import numpy as np
 import xarray as xr
+import pandas as pd
+import geocat.comp as gc  # use geocat's interpolation
 
 # import plotting_functions as pf  # No need for pf unless we move general taylor diagram into there.
 import matplotlib as mpl
@@ -98,18 +100,17 @@ def cam_taylor_diagram(adfobj):
                 'TropicalLandPrecip', 'TropicalOceanPrecip', 'EquatorialPacificStress', 
                 'U300', 'ColumnRelativeHumidity', 'ColumnTemperature']
 
-    # NOTE: 
-    # Strategy here is to go through the list of variables and cases and get the statistics 
-    # necessary for the plot. Build up the data for the plot incrementally, which should
-    # provide reasonable performance (especially reduced memory pressure) when there are
-    # many cases to deal with. 
-
+    # hold the data in a DataFrame for each case
+    # variable | correlation | stddev ratio | bias
+    df_template = pd.DataFrame(index=var_list, columns=['corr', 'ratio', 'bias'])
+    result_by_case = {cname: df_template.copy() for cname in case_names}
     for v in var_list:
         # get the baseline field
         base_x = _retrieve(v, base_loc)
-
-    # generate the statistics
-
+        for casenumber, case in case_names:
+            case_x = _retrieve(adfobj, v, case, case_climo_loc[casenumber])
+            # generate the statistics
+            result_by_case[case].loc[v] = taylor_stats_single(case_x, base_x)
 
     # send statistics to plot
 
@@ -124,11 +125,34 @@ def cam_taylor_diagram(adfobj):
 #
 
 # --- DERIVED VARIABLES --- 
-def vertical_average(fld, ps):
+
+def _pressure_from_hybrid(psfc, hya, hyb, p0=100000.):
+    """Calculate pressure at the hybrid levels."""
+
+    # p(k) = hya(k) * p0 + hyb(k) * psfc
+
+    # This will be in Pa
+    return hya * p0 + hyb * psfc
+
+
+def vertical_average(fld, ps, acoef, bcoef):
+    """Calculate weighted vertical average using trapezoidal rule. Uses full column."""
     # get pressure field
+    pres = _pressure_from_hybrid(ps, acoef, bcoef)
     # get del_pressure
-    # return (1/g) * sum(fld * del_pressure) / sum(del_pressure)
-    pass
+    # return sum(fld * del_pressure) / sum(del_pressure)
+
+    # integral of del_pressure turns out to be just the average of the square of the boundaries:
+    # -- assume lev is a coordinate and is nominally in pressure units
+    maxlev = pres['lev'].max().item()
+    minlev = pres['lev'].min().item()
+    dp_integrated = 0.5 * (pres.sel(lev=maxlev)**2 - pres.sel(lev=minlev)**2)
+
+    levaxis = fld.dims.index('lev')  # fld needs to be a dataarray
+    assert isinstance(levaxis, int), f'the axis called lev is not an integer: {levaxis}'
+
+    fld_integrated = np.trapz(fld * pres, x=pres, axis=levaxis)
+    return fld_integrated / dp_integrated
 
 
 def find_landmask(adf, casename, location):
@@ -210,28 +234,35 @@ def get_tropical_ocean_precip(adf, casename, location):
     return prect.sel(lat=slice(-30,30))
 
 
-def get_u_at_plev():
-    # parse input to know variable and pressure value
-    # get variable
-    # TODO: are variables saved on pressure levels, or do we need to interpolate?
-    # return variable on plev
-    pass
+def get_u_at_plev(adf, casename, location):
+    uwind = _retrieve(adf, "U", casename, location)
+    u300 = gc.interp_hybrid_to_pressure(uwind['U'], uwind['PS'], uwind['hyam'], uwind['hybm'], new_levels=np.array([30000.0]), lev_dim='lev')
+    u300 = u300.sqeeze(drop=True)
+    return u300
 
-def get_virh():
-    # get RELHUM climo
-    # get PS
-    # TODO: on pressure levels already?
-    # TODO: RELHUM will have hyam, hybm? 
-    # vertical_average(RELHUM, PS)
-    pass
 
-def get_vit():
-    # get T climo
-    # get PS
-    # TODO: on pressure levels already?
-    # TODO: T will have hyam, hybm? 
-    # vertical_average(T, PS)
-    pass
+def get_vertical_average(adf, casename, location, varname):
+    '''Collect data from case and use `vertical_average` to get result.'''
+    fils = sorted(list(Path(location).glob(f"{casename}*_{varname}_*.nc")))
+    if (len(fils) == 0)):
+        raise IOError(f"Could not find {varname}")
+    else:
+        if len(fils1) == 1:
+            ds = xr.open_dataset(fils)
+        else:
+            print("Need to deal with mult-file case.")
+    # If the climo file is made by ADF, then PS, hyam, hybm will be with VARIABLE:
+    return vertical_average(ds[varname], ds['PS'], ds['hyam'], ds['hybm'])
+
+
+def get_virh(adf, casename, location):
+    '''Calculate vertically averaged relative humidity.'''
+    return get_vertical_average(adf, casename, location, "RELHUM")
+
+
+def get_vit(adf, casename, location):
+    '''Calculate vertically averaged temperature.'''
+    return get_vertical_average(adf, casename, location, "T")
 
 
 def get_derive_func(fld):
@@ -244,6 +275,8 @@ def get_derive_func(fld):
 
 
 def _retrieve(adfobj, variable, casename, location):
+    """Custom function that retrieves a variable. Returns the variable as a DaraArray."""
+
     v_to_derive = ['TropicalLandPrecip', 'TropicalOceanPrecip', 'EquatorialPacificStress', 
                 'U300', 'ColumnRelativeHumidity', 'ColumnTemperature']
     if variable not in v_to_derive:
@@ -255,10 +288,12 @@ def _retrieve(adfobj, variable, casename, location):
             ds = xr.open_mfdataset(fils)  # do we ever expect climo files split into pieces? 
         else:
             ds = xr.open_dataset(fils[0])
+        da = ds[variable]
     else:
         func = get_derive_func(variable)
-        ds = func(adfobj, casename, location)
-    return ds     
+        da = func(adfobj, casename, location)
+    return da
+
 
 def weighted_correlation(x, y, weights):
     # TODO: since we expect masked fields (land/ocean), need to allow for missing values (maybe works already?)
