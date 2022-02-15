@@ -136,6 +136,17 @@ def averaging_example(adf, clobber=False, search=None):
                 cam_ts_data.assign_coords(time=time)
                 cam_ts_data = xr.decode_cf(cam_ts_data)
 
+            # Need to check whether averaging interval is supplied
+            if ('start_year' in calc_climos):
+                sy = calc_climos['start_year']
+            else:
+                sy = None
+            if ('end_year' in calc_climos):
+                ey = calc_climos['end_year']
+            else:
+                ey = None
+            cam_ts_data = cam_ts_data.sel(time=slice(sy,ey))
+
             #Group time series values by month, and average those months together:
             cam_climo_data = cam_ts_data.groupby('time.month').mean(dim='time')
 
