@@ -353,12 +353,29 @@ def weighted_correlation(x, y, weights):
 
 
 def weighted_std(x, weights):
+    """Weighted standard deviation.
+    
+    x -> xr.DataArray
+    weights -> array-like of weights, probably xr.DataArray
+
+    If weights is not the same shape as x, will use `broadcast_like` to 
+    create weights array.
+
+    Returns the weighted standard deviation of the full x array.
+
+    """
+    xshape = x.shape
+    wshape = weights.shape
+    if xshape != wshape:
+        wa = weights.broadcast_like(x)
+    else:
+        wa = weights
     mean_x = x.weighted(weights).mean()
     dev_x = x - mean_x
     swdev = (weights * dev_x**2).sum()
-    number_nonzero_weights = np.count_nonzero(weights)
-    sum_wgt = weights.sum() * ((number_nonzero_weights - 1)/number_nonzero_weights)
-    return np.sqrt(swdev / sum_wgt)
+    total_weights = wa.where(x.notnull()).sum()
+    return np.sqrt(swdev / total_weights)
+
 
 
 def taylor_stats_single(casedata, refdata, w=True):
@@ -378,8 +395,8 @@ def taylor_stats_single(casedata, refdata, w=True):
     else:
         wgt = np.ones(len(lat))
     correlation = weighted_correlation(casedata, refdata, wgt).item()
-    a_sigma = weighted_std(casedata) # casedata.weighted(wgt).std().item()
-    b_sigma = weighted_std(refdata)  # refdata.weighted(wgt).std().item()
+    a_sigma = weighted_std(casedata, wgt) # casedata.weighted(wgt).std().item()
+    b_sigma = weighted_std(refdata, wgt)  # refdata.weighted(wgt).std().item()
     mean_case = casedata.weighted(wgt).mean()
     mean_ref = refdata.weighted(wgt).mean()
     bias = (100*((mean_case - mean_ref)/mean_ref)).item()

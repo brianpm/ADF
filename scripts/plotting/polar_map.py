@@ -209,7 +209,7 @@ def polar_map(adfobj):
 
                             # Close figures to avoid memory issues:
                             plt.close(nhfig)
-                            plt.close(shfigh)
+                            plt.close(shfig)
 
                     else: #mdata dimensions check
                         print("\t \u231B skipping polar map for {} as it doesn't have only lat/lon dims.".format(var))
