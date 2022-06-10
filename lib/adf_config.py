@@ -5,7 +5,7 @@ This class inherits from the AdfBase class.
 
 Currently this class does three things:
 
-1.  Initializes an instance of AdfBase.
+1.  Initializes and instance of AdfBase.
 
 2.  Reads in a config (YAML) file.
 
@@ -265,13 +265,18 @@ class AdfConfig(AdfBase):
 
         #Check if the config dictionary has been specified:
         if isinstance(conf_dict, dict):
+            print("read_config_var L268 : found conf_dict")
             var_dict = conf_dict
         elif isinstance(conf_dict, type(None)):
+            print("read_config_var L271 : using self.__config_dict ")
             var_dict = self.__config_dict
         else:
             emsg = "Supplied 'conf_dict' variable should be a dictionary,"
             emsg += f" not type '{type(conf_dict)}'"
             raise TypeError(emsg)
+            
+        print("DRB read_config_var got dict ")
+        print(var_dict)
 
         #Check that variable name exists in dictionary:
         if varname not in var_dict.keys():
@@ -299,6 +304,48 @@ class AdfConfig(AdfBase):
         #without worrying about modifying the actual
         #config variables dictionary:
         return copy.deepcopy(var)
+
+
+
+    def update_config_var(self, varname, varsetting,
+                                conf_dict=None):
+
+        """
+        Sets a varname = varsetting in the configure dictionary.
+        If it already exists, over-writes with a warning,
+        else just adds it.
+
+        This *does not* protect the values in the original YAML-defined config dictionary
+        """
+        assert (conf_dict is not None), "update_config_var requires an exisiting configure dictionary"
+        assert isinstance(conf_dict, dict), f"Supplied 'conf_dict' variable should be a dictionary, not type '{type(conf_dict)}'"
+
+        #If the variable name is not already in the dictionary, add it with its setting
+        if varname in conf_dict.keys():
+            print("DRB incoming varname/setting ",varname," = ",conf_dict[varname])
+        else:
+            print(f"WARNING: {varname} not in dict, ADDING IT.")
+
+        conf_dict[varname] = varsetting  # no restrictions on type of varsetting (?)
+
+        #Check if value is a string, integer, or another dict:
+        #BPM: included `bool` as an option. Does it matter what it is though?
+        # BPM: changed from conf_dict[varname] = str(varsetting) -- does not need to be string
+        #if isinstance(varsetting, (str, int, bool)):
+        #    #Add key/value to search dict:
+        #    print(f"\t Adding {varname} = {varsetting} to config.")
+        #    conf_dict[varname] = varsetting
+        #elif isinstance(varsetting, dict):
+        #    print("WARNING: setting a nested dictionary, are you sure?")
+        #    conf_dict[varname] = varsetting
+        #    #ermsg = "ADF update_config_var is not set up to handle nested dictionaries."
+        #    #self.end_diag_fail(ermsg)
+        #else:
+        #    ermsg = f"ADF update_config_var does not support adding variables of type {type(varsetting)}."
+        #    self.end_diag_fail(ermsg)
+        #print(f"DRB Outgoing dict {varname} = {conf_dict[varname]}")
+
+        
 
 #++++++++++++++++++++
 #End Class definition
