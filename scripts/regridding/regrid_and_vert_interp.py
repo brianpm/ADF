@@ -657,8 +657,8 @@ def save_to_nc(tosave, outname, attrs=None, proc=None):
 
     valid_encodings = ['_FillValue', 'fletcher32', 'complevel', 'dtype', 'zlib', 'chunksizes', 
                        'contiguous', 'compression', 'least_significant_digit', 'shuffle']
-    print(enc)
     for ec in enc:
+        print(f"{ec = }")
         if isinstance(enc[ec], dict):
             enc[ec] = {key: ec[key] for key in ec if key not in valid_encodings}
 
