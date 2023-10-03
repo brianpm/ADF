@@ -628,6 +628,13 @@ def save_to_nc(tosave, outname, attrs=None, proc=None):
     Avoids `NaN` in `_FillValue` in all variables; 
     for variables without `_FillValue` and `missing_value`, will be set to None.
     Also tries to preserve precision and other "encoding" for each variable.
+
+    Xarray raises a ValueError if there are encoding values that are not allowed 
+    for the backend. The valid encodings for netCDF4 are:
+    {'_FillValue', 'fletcher32', 'complevel', 'dtype', 'zlib', 'chunksizes', 
+    'contiguous', 'compression', 'least_significant_digit', 'shuffle'}
+    Each encoding will be checked; any entries that are not in the valid ones are removed.
+
     """
     xo = tosave  # used to have more stuff here.
     enc_dv = {}  # encoding for data variables
@@ -647,6 +654,12 @@ def save_to_nc(tosave, outname, attrs=None, proc=None):
         if '_FillValue' not in enc_c[xname]:
             enc_c[xname]['_FillValue'] = xo[xname].encoding.get('missing_value')
     enc = {**enc_c, **enc_dv}
+
+    valid_encodings = ['_FillValue', 'fletcher32', 'complevel', 'dtype', 'zlib', 'chunksizes', 
+                       'contiguous', 'compression', 'least_significant_digit', 'shuffle']
+    for ec in enc:
+        enc[ec] = {key: ec[key] for key in ec if key not in valid_encodings}
+
     if attrs is not None:
         xo.attrs = attrs
     if proc is not None:
