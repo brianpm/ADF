@@ -634,6 +634,7 @@ def save_to_nc(tosave, outname, attrs=None, proc=None):
     {'_FillValue', 'fletcher32', 'complevel', 'dtype', 'zlib', 'chunksizes', 
     'contiguous', 'compression', 'least_significant_digit', 'shuffle'}
     Each encoding will be checked; any entries that are not in the valid ones are removed.
+    `chunksizes` is also **NOT** passed because it can be invalid for data reductions.
 
     """
     xo = tosave  # used to have more stuff here.
@@ -655,8 +656,9 @@ def save_to_nc(tosave, outname, attrs=None, proc=None):
             enc_c[xname]['_FillValue'] = xo[xname].encoding.get('missing_value')
     enc = {**enc_c, **enc_dv}
 
-    valid_encodings = ['_FillValue', 'fletcher32', 'complevel', 'dtype', 'zlib', 'chunksizes', 
+    valid_encodings = ['_FillValue', 'fletcher32', 'complevel', 'dtype', 'zlib', 
                        'contiguous', 'compression', 'least_significant_digit', 'shuffle']
+    # 'chunksizes' removed from valid encodings
     for v in enc:
         if isinstance(enc[v], dict):
             enc[v] = {key: enc[v][key] for key in enc[v] if key in valid_encodings}
