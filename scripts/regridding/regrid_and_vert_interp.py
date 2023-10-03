@@ -606,21 +606,51 @@ def _regrid_and_interpolate_levs(model_dataset, var_name, regrid_dataset=None, r
 #####
 
 def save_to_nc(tosave, outname, attrs=None, proc=None):
-    """Saves xarray variable to new netCDF file"""
+    """Saves xarray variable to new netCDF file
+    
+    Parameters
+    ----------
+    tosave : xr.DataArray or xr.Dataset
 
+    outname : str or Path
+
+    attrs : dict
+        attribute dict to attach to output
+    
+    proc : str
+        string indicating any processing information to be included
+    
+    Notes
+    -----
+    Uses xarray's `to_netcdf`. 
+    Tries to apply appropriate `_FillValue` attributes
+    by getting them from the input directly. 
+    Avoids `NaN` in `_FillValue` in all variables; 
+    for variables without `_FillValue` and `missing_value`, will be set to None.
+    Also tries to preserve precision and other "encoding" for each variable.
+    """
     xo = tosave  # used to have more stuff here.
-    # deal with getting non-nan fill values.
+    enc_dv = {}  # encoding for data variables
+    enc_c = {}  # encoding for coordinate variables
     if isinstance(xo, xr.Dataset):
-        enc_dv = {xname: {'_FillValue': None} for xname in xo.data_vars}
+        for xname in xo.data_vars:
+            x_enc = xo[xname].encoding
+            if '_FillValue' not in x_enc:
+                x_enc['_FillValue'] = x_enc.get('missing_value')
+            enc_dv[xname] = x_enc
     else:
-        enc_dv = {}
-    #End if
-    enc_c = {xname: {'_FillValue': None} for xname in xo.coords}
+        enc_dv = xo.encoding
+        if '_FillValue' not in enc_dv:
+            x_enc['_FillValue'] = x_enc.get('missing_value')
+    for xname in xo.coords:
+        enc_c[xname] = xo[xname].encoding
+        if '_FillValue' not in enc_c[xname]:
+            enc_c[xname]['_FillValue'] = xo[xname].encoding.get('missing_value')
     enc = {**enc_c, **enc_dv}
     if attrs is not None:
         xo.attrs = attrs
     if proc is not None:
-        xo.attrs['Processing_info'] = f"Start from file {origname}. " + proc
+        xo.attrs['Processing_info'] = proc
     xo.to_netcdf(outname, format='NETCDF4', encoding=enc)
 
 #####
