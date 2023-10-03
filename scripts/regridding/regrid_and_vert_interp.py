@@ -659,7 +659,7 @@ def save_to_nc(tosave, outname, attrs=None, proc=None):
                        'contiguous', 'compression', 'least_significant_digit', 'shuffle']
     for v in enc:
         if isinstance(enc[v], dict):
-            enc[v] = {key: enc[v][key] for key in enc[v] if key not in valid_encodings}
+            enc[v] = {key: enc[v][key] for key in enc[v] if key in valid_encodings}
 
     if attrs is not None:
         xo.attrs = attrs
