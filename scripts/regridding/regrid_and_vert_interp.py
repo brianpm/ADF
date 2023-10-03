@@ -657,10 +657,9 @@ def save_to_nc(tosave, outname, attrs=None, proc=None):
 
     valid_encodings = ['_FillValue', 'fletcher32', 'complevel', 'dtype', 'zlib', 'chunksizes', 
                        'contiguous', 'compression', 'least_significant_digit', 'shuffle']
-    for ec in enc:
-        print(f"{ec = }")
-        if isinstance(enc[ec], dict):
-            enc[ec] = {key: ec[key] for key in ec if key not in valid_encodings}
+    for v in enc:
+        if isinstance(enc[v], dict):
+            enc[v] = {key: enc[v][key] for key in enc[v] if key not in valid_encodings}
 
     if attrs is not None:
         xo.attrs = attrs
