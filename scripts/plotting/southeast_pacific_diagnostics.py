@@ -105,11 +105,19 @@ def seasonal_cycle_plot(adfobj, var_list, plot_locations, plot_type, case_names)
         return None
     seasonal_cycle_var_list = ["SST", "CLDTOT", "SWCF"]
     res = adfobj.variable_defaults
+    if adfobj.get_basic_info("compare_obs"):
+        var_obs_dict = adfobj.var_obs_dict
+
+
     for v in seasonal_cycle_var_list:
         if v not in var_list:
             print(f"STOP! {v} not in var_list.")
             continue
-        # "else": 
+        if adfobj.get_basic_info("compare_obs"):
+            have_obs = v in var_obs_dict
+            print(f"LOOK IN var_obs_dict for variable: {have_obs}")
+
+        # else
         if v in res:
             vres = res[v]
         else:
@@ -122,6 +130,7 @@ def seasonal_cycle_plot(adfobj, var_list, plot_locations, plot_type, case_names)
 
         # load model time series files:
         m_ts_fils = get_timeseries_file(adfobj, case_names[0], v)
+        print(f"FILES: {m_ts_fils}")
         mdata = load_da(m_ts_fils, v, res=vres)
         # Reduce to region:
         mdata = mdata.sel(lat=slice(sep_sc_box[0], sep_sc_box[1]), lon=slice(sep_sc_box[2], sep_sc_box[3]))
@@ -139,10 +148,16 @@ def seasonal_cycle_plot(adfobj, var_list, plot_locations, plot_type, case_names)
         fig.savefig(plot_name, bbox_inches='tight')
 
 
-def get_timeseries_file(adfobj, case, field):
+def get_timeseries_file(adfobj, case_name, field, hfile=None):
     ts_locs = adfobj.get_cam_info("cam_ts_loc", required=True)
-    ts_loc = Path(ts_locs[case])
-    ts_filenames = f'{case}.*.{field}.*nc'
+    print(f"ts_locs is supposed to be: {ts_locs}")
+    if hfile is None:
+        hfile = 'h0'
+        print("Defaulting to search for `*.h0.*` files")
+    if len(ts_locs) > 1:
+        raise NotImplemented("Multi-case not supported yet")
+    ts_loc = Path(ts_locs[0])
+    ts_filenames = f'{case_name}.*.{hfile}.{field}.*nc'
     ts_files = sorted(ts_loc.glob(ts_filenames))
     return ts_files
 
@@ -169,4 +184,3 @@ def load_da(fils, variablename, res=None):
         da = da * vres.get("scale_factor",1) + vres.get("add_offset", 0)
         da.attrs['units'] = vres.get("new_unit", da.attrs.get('units', 'none'))
     return da
-

@@ -673,7 +673,7 @@ class AdfInfo(AdfConfig):
 
         #Search for first variable in var_list to get a time series file to read
         #NOTE: it is assumed all the variables have the same dates!
-        ts_files = sorted(input_location.glob(f"{case_name}*.{var_list[0]}.*nc"))
+        ts_files = sorted(input_location.glob(f"{case_name}*.{self.get_basic_info('hist_str')}.{var_list[0]}.*nc"))
 
         #Read in file(s)
         if len(ts_files) == 1:
