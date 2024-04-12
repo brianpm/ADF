@@ -86,7 +86,7 @@ def southeast_pacific_diagnostics(adfobj):
                "SON": [9, 10, 11]}
     # ---------------------
 
-    seasonal_cycle_plot(var_list, plot_locations, plot_type)
+    seasonal_cycle_plot(adfobj, var_list, plot_locations, plot_type, case_names)
     transect_plots()
     region_climo_plots()
 
