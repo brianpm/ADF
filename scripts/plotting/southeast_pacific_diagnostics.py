@@ -8,11 +8,33 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 
 from adf_dataset import AdfData
+import plotting_functions as pf
+
+from collections import namedtuple
+
+try:
+    import palettable
+except:
+    print(f"No palettable was imported!!")
+
+try:
+    import colorcet as cc
+except:
+    print(f"No colorcet was imported")
+
+
+## register some colormaps:
+for cc_cmap in ['CET_L19', 'bmy', 'CET_D11', 'CET_D7', 'CET_D10', 'CET_L17', 'gouldian', 'CET_R3', 'CET_D1', 'bmw']:
+    my_cmap = cc.cm[cc_cmap]
+    mpl.colormaps.register(cmap=my_cmap, name=cc_cmap)
 
 
 
-sep_sc_box = [-20, -10, 360-90, 360-80]  # Klein & Hartmann 1993
-sep_sc_transect = [360-90, 360-70] # e.g., Bretherton et al. 2010 (10.5194/acpd-10-15921-2010)
+# Define region and transect here
+Region = namedtuple("Region", "south north west east")
+Transect = namedtuple("Transect", "lat west east")
+sep_sc_box = Region(-20, -10, 360-90, 360-80)  # Klein & Hartmann 1993
+sep_sc_transect = Transect(-20, 360-90, 360-70) # e.g., Bretherton et al. 2010 (10.5194/acpd-10-15921-2010)
 
 #Set seasonal ranges:
 seasons = {"ANN": np.arange(1,13,1),
@@ -30,7 +52,7 @@ def southeast_pacific_diagnostics(adfobj):
     # Start by instantiating the AdfData object
     # and Extract needed quantities from ADF object:
     adfdata = AdfData(adfobj)
-    var_list = adfobj.diag_var_list
+    var_list = adfdata.var_list
 
     #Special ADF variable which contains the output paths for
     #all generated plots and tables:
@@ -76,7 +98,7 @@ def southeast_pacific_diagnostics(adfobj):
                 seasonal_cycle_plot(adfdata, var, vres, plot_loc, plot_type, case_name)
             if var in transect_var_list:
                 transect_plots(adfdata, var, plot_loc, plot_type, case_name)
-            region_climo_plots()
+            region_climo_plots(adfdata, var, vres, plot_loc, plot_type, case_name)
 
 
 def lonFlip(data, lonname=None):
@@ -97,18 +119,34 @@ def lonFlip(data, lonname=None):
 
 def transect_plots(adf, var, plot_loc, plot_type, case_name):
     """Plot 20°S transect of given variable."""
+    
+    mdata = adf.load_climo_da(case_name, var)
+    mdata = mdata.sel(lat=sep_sc_transect.lat, method='nearest').sel(lon=slice(sep_sc_transect.west, sep_sc_transect.east))
+
+    res = adf.adf.variable_defaults
+    vres = res[var] if var in res else {}
+
     have_ref = var in adf.ref_var_nam
     if not have_ref:
         print(f"No reference data found for variable: {var}")
+        cp_info = pf.prep_contour_plot(mdata, mdata, mdata, **vres)
     else:
         odata = adf.load_reference_da(var)
         if odata['lon'].min() < 0:
             print("Flip longitude on reference data.")
             odata = lonFlip(odata)
-        odata = odata.sel(lat=-20,method='nearest').sel(lon=slice(sep_sc_transect[0], sep_sc_transect[1]))
-    
-    mdata = adf.load_climo_da(case_name, var)
-    mdata = mdata.sel(lat=-20,method='nearest').sel(lon=slice(sep_sc_transect[0], sep_sc_transect[1]))
+        odata = odata.sel(lat=sep_sc_transect.lat, method='nearest').sel(lon=slice(sep_sc_transect.west, sep_sc_transect.east))
+        cp_info = pf.prep_contour_plot(mdata, odata, mdata, **vres) # can't do difference b/c we didn't ensure same size
+    cmap = cp_info['cmap1']
+    cnrm = cp_info['norm1']
+    lvls = cp_info['levels1']
+    # Check if we have PMID to move to pressure levels:
+    have_pmid = "PMID" in adf.var_list
+    if have_pmid:
+        print(f"PMID is found, will move to pressure levels.")
+        pmid = adf.load_climo_da(case_name, "PMID")
+        pmid = pmid.sel(lat=sep_sc_transect.lat, method='nearest').sel(lon=slice(sep_sc_transect.west, sep_sc_transect.east))
+        mdata = pf.pmid_to_plev(mdata, pmid, new_levels=100.*np.arange(100, 1020, 10), convert_to_mb=False)
 
     # Seasonal transects
     for season, vals in seasons.items():
@@ -119,14 +157,14 @@ def transect_plots(adf, var, plot_loc, plot_type, case_name):
             fig, ax = plt.subplots(ncols=2, constrained_layout=True)
             fig.suptitle(f"20°S {var} {season}")
             mlon, mlev = np.meshgrid(smdata.lon, smdata.lev)
-            cnModel = ax[0].pcolormesh(mlon, mlev, smdata)
+            cnModel = ax[0].pcolormesh(mlon, mlev, smdata, norm=cnrm, cmap=cmap)
             ax[0].set_title(f"CAM")
             ax[0].set_ylim([1000,100])
             fig.colorbar(cnModel, ax=ax[0])
             if have_ref:
                 sodata = odata.sel(time=vals).mean(dim='time')
                 rlon, rlev = np.meshgrid(sodata.lon, sodata.lev)
-                cnRef = ax[1].pcolormesh(rlon, rlev, sodata)
+                cnRef = ax[1].pcolormesh(rlon, rlev, sodata, norm=cnrm, cmap=cmap)
                 ax[1].set_title(adf.ref_labels[var])
                 ax[1].set_ylim([1000,100])
                 fig.colorbar(cnRef, ax=ax[1])
@@ -138,14 +176,86 @@ def transect_plots(adf, var, plot_loc, plot_type, case_name):
                 ax.plot(sodata.lon, sodata, label=adf.ref_labels[var])
             ax.legend()
         fig.savefig(plot_name, bbox_inches='tight')
+        plt.close(fig)
 
 
 
 
 
-def region_climo_plots():
+def region_climo_plots(adf, var, vres, plot_loc, plot_type, case_name):
     """Plot planar view of region."""
-    pass
+    have_ref = var in adf.ref_var_nam
+    if not have_ref:
+        print(f"No reference data found for variable: {var}")
+    else:
+        odata = adf.load_reference_da(var)
+        if odata['lon'].min() < 0:
+            print("Flip longitude on reference data.")
+            odata = lonFlip(odata)
+        odata = odata.sel(lat=slice(sep_sc_box.south-10, sep_sc_box.north+10), lon=slice(sep_sc_box.west-10, sep_sc_box.east+10))
+        if 'month' in odata.dims:
+            odata = odata.rename({'month':'time'})
+            print(f"Convert MONTH to TIME, but check it: {odata.time}")
+            if (odata.time.min() == 0) and (odata.time.max() == 11):
+                print(f"Time goes from 0 to 11 instead of 1 to 12 - Adjust")
+                odata = odata.assign_coords({"time":odata.time+1})
+
+    mdata = adf.load_climo_da(case_name, var)
+    mdata = mdata.sel(lat=slice(sep_sc_box.south-10, sep_sc_box.north+10), lon=slice(sep_sc_box.west-10, sep_sc_box.east+10))
+
+    # seasonal plots
+    for season, vals in seasons.items():
+        plot_name = plot_loc / f"{case_name}_{var}_{season}_sepac_latlon.{plot_type}"
+        print(f"[SEPAC](latlon_plot) {plot_name}")
+        smdata = mdata.sel(time=vals).mean(dim='time')
+        if 'lev' in smdata.dims:
+            print(f"Sorry, didn't implement a level selection for the map plots [{var}]")
+            continue
+        else:
+            # this doesn't get sensible defaults for differences yet.
+            if have_ref:
+                sodata = odata.sel(time=vals).mean(dim='time')
+                cp_info = pf.prep_contour_plot(smdata, sodata, smdata, **vres)
+            else:
+                cp_info = pf.prep_contour_plot(smdata, smdata, smdata, **vres)
+
+            cmap = cp_info['cmap1']
+            cnrm = cp_info['norm1']
+            lvls = cp_info['levels1']
+
+            fig, ax = plt.subplots(ncols=2, subplot_kw={"projection":ccrs.PlateCarree()})
+            fig.suptitle(f"Southeast Pacific, {var}, {season}")
+            mlon, mlat = np.meshgrid(smdata.lon, smdata.lat)
+            img0 = ax[0].pcolormesh(mlon, mlat, smdata,  transform=ccrs.PlateCarree(),
+                                    norm=cnrm, cmap=cmap)
+            ax[0].set_title("CAM")
+            CS0 = ax[0].contour(mlon, mlat, smdata, transform=ccrs.PlateCarree(), levels=lvls, colors='black')
+            fig.colorbar(img0, ax=ax[0], shrink=0.5)
+            ax[0].clabel(CS0, CS0.levels, inline=True, fontsize=10)
+            # draw the region boundary 
+            ax[0].plot([sep_sc_box.west, sep_sc_box.east, sep_sc_box.east, sep_sc_box.west, sep_sc_box.west],
+                       [sep_sc_box.south, sep_sc_box.south, sep_sc_box.north, sep_sc_box.north, sep_sc_box.south],
+                       transform=ccrs.PlateCarree(), color='lightgray')
+            ax[0].coastlines()
+            if have_ref:
+                # sodata = odata.sel(time=vals).mean(dim='time')
+                rlon, rlat = np.meshgrid(sodata['lon'], sodata['lat'])
+                img1 = ax[1].pcolormesh(rlon, rlat, sodata, transform=ccrs.PlateCarree(),
+                                        norm=cnrm, cmap=cmap)
+                CS1 = ax[1].contour(rlon, rlat, sodata, transform=ccrs.PlateCarree(), levels=lvls, colors='black')
+                ax[1].clabel(CS1, CS1.levels, inline=True, fontsize=10)
+                ax[1].set_title(adf.ref_labels[var])
+                ax[1].plot(
+                    [sep_sc_box.west, sep_sc_box.east, sep_sc_box.east, sep_sc_box.west, sep_sc_box.west],
+                    [sep_sc_box.south, sep_sc_box.south, sep_sc_box.north, sep_sc_box.north, sep_sc_box.south],
+                    transform=ccrs.PlateCarree(), color='lightgray')
+                ax[1].coastlines()
+
+                fig.colorbar(img1, ax=ax[1], shrink=0.5)
+            else:
+                ax[1].set_axis_off()
+        fig.savefig(plot_name, bbox_inches='tight')
+        plt.close(fig)
 
 def seasonal_cycle_plot(adf, var, vres, plot_loc, plot_type, case_name):
     """Plot the seasonal cycle.
@@ -171,7 +281,7 @@ def seasonal_cycle_plot(adf, var, vres, plot_loc, plot_type, case_name):
         if odata['lon'].min() < 0:
             print("Flip longitude on reference data.")
             odata = lonFlip(odata)
-        odata = odata.sel(lat=slice(sep_sc_box[0], sep_sc_box[1]), lon=slice(sep_sc_box[2], sep_sc_box[3]))
+        odata = odata.sel(lat=slice(sep_sc_box.south, sep_sc_box.north), lon=slice(sep_sc_box.west, sep_sc_box.east))
         oanncyc = odata.weighted(np.cos(np.radians(odata.lat))).mean(dim=("lat","lon"))
         print(oanncyc)
 
@@ -183,7 +293,7 @@ def seasonal_cycle_plot(adf, var, vres, plot_loc, plot_type, case_name):
     mdata = adf.load_climo_da(case_name, var)
 
     # Reduce to region:
-    mdata = mdata.sel(lat=slice(sep_sc_box[0], sep_sc_box[1]), lon=slice(sep_sc_box[2], sep_sc_box[3]))
+    mdata = mdata.sel(lat=slice(sep_sc_box.south, sep_sc_box.north), lon=slice(sep_sc_box.west, sep_sc_box.east))
 
     avganncyc = mdata.weighted(np.cos(np.radians(mdata.lat))).mean(dim=("lat","lon"))
 
@@ -225,3 +335,4 @@ def seasonal_cycle_plot(adf, var, vres, plot_loc, plot_type, case_name):
 
 
     fig.savefig(plot_name, bbox_inches='tight')
+    plt.close(fig)
