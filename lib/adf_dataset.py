@@ -198,7 +198,11 @@ class AdfData:
         return ds
 
     def load_da(self, fils, variablename):
-        da = (self.load_dataset(fils)[variablename]).squeeze()
+        ds = self.load_dataset(fils)
+        if ds is None:
+            print(f"ERROR: Load failed for {variablename}")
+            return None
+        da = (ds[variablename]).squeeze()
         if variablename in self.res:
             vres = self.res[variablename]
             da = da * vres.get("scale_factor",1) + vres.get("add_offset", 0)
