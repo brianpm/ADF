@@ -14,12 +14,12 @@ from collections import namedtuple
 
 try:
     import palettable
-except:
+except ImportError:
     print(f"No palettable was imported!!")
 
 try:
     import colorcet as cc
-except:
+except ImportError:
     print(f"No colorcet was imported")
 
 
@@ -43,7 +43,8 @@ seasons = {"ANN": np.arange(1,13,1),
             "MAM": [3, 4, 5],
             "SON": [9, 10, 11]}
 
-seasonal_cycle_var_list = ["PRECT", "SST", "CLDTOT", "SWCF", 'FSDS', 'LWCF', 'FLDS', 'FSNS', 'FSNSC', 'FLNS', 'FLNSC', 'TGCLDLWP']
+seasonal_cycle_var_list = ["PRECT", "SST", "CLDTOT", "SWCF", 'FSDS', 'LWCF', 'FLDS', 'FSNS', 'FSNSC', 'FLNS', 'FLNSC', 'TGCLDLWP', 'ACTREL',
+                           'CDNUMC','LHFLX', 'SHFLX', 'OMEGA500', 'PBLH', 'PRECL', 'PRECC', 'PRECT', 'TMQ']
 
 transect_var_list = ['CLOUD', 'CLDLIQ', 'T', 'Q']
 
@@ -74,7 +75,6 @@ def southeast_pacific_diagnostics(adfobj):
     # -- So check for it, and default to png
     basic_info_dict = adfobj.read_config_var("diag_basic_info")
     plot_type = basic_info_dict.get('plot_type', 'png')
-    print(f"\t NOTE: Plot type is set to {plot_type}")
 
     # check if existing plots need to be redone
     redo_plot = adfobj.get_basic_info('redo_plot')
@@ -90,16 +90,20 @@ def southeast_pacific_diagnostics(adfobj):
             plot_loc.mkdir(parents=True)
 
         for var in var_list:
-            if var in res:
-                vres = res[var]
+            if adfdata.get_climo_file(case_name, var):
+                if var in res:
+                    vres = res[var]
+                else:
+                    vres = {}
+                vres["case_label"] = adfdata.test_nicknames[case_idx]
+                if var in seasonal_cycle_var_list:
+                    seasonal_cycle_plot(adfdata, var, vres, plot_loc, plot_type, case_name)
+                if var in transect_var_list:
+                    transect_plots(adfdata, var, vres, plot_loc, plot_type, case_name)
+                region_climo_plots(adfdata, var, vres, plot_loc, plot_type, case_name)
             else:
-                vres = {}
-            if var in seasonal_cycle_var_list:
-                seasonal_cycle_plot(adfdata, var, vres, plot_loc, plot_type, case_name)
-            if var in transect_var_list:
-                transect_plots(adfdata, var, plot_loc, plot_type, case_name)
-            region_climo_plots(adfdata, var, vres, plot_loc, plot_type, case_name)
-
+                print(f"INFO: {var = } ... will continue to next.")
+                continue
 
 def lonFlip(data, lonname=None):
     # NOTE: this assumes global values
@@ -117,16 +121,19 @@ def lonFlip(data, lonname=None):
     return tmpdata
 
 
-def transect_plots(adf, var, plot_loc, plot_type, case_name):
+def transect_plots(adf, var, vres, plot_loc, plot_type, case_name):
     """Plot 20°S transect of given variable."""
-    
-    mdata = adf.load_climo_da(case_name, var)
+    have_ref = var in adf.ref_var_nam
+
+    if have_ref:
+        mdata = adf.load_regrid_da(case_name, var)
+    else:    
+        mdata = adf.load_climo_da(case_name, var)
     mdata = mdata.sel(lat=sep_sc_transect.lat, method='nearest').sel(lon=slice(sep_sc_transect.west, sep_sc_transect.east))
 
     res = adf.adf.variable_defaults
     vres = res[var] if var in res else {}
 
-    have_ref = var in adf.ref_var_nam
     if not have_ref:
         print(f"No reference data found for variable: {var}")
         cp_info = pf.prep_contour_plot(mdata, mdata, mdata, **vres)
@@ -158,7 +165,7 @@ def transect_plots(adf, var, plot_loc, plot_type, case_name):
             fig.suptitle(f"20°S {var} {season}")
             mlon, mlev = np.meshgrid(smdata.lon, smdata.lev)
             cnModel = ax[0].pcolormesh(mlon, mlev, smdata, norm=cnrm, cmap=cmap)
-            ax[0].set_title(f"CAM")
+            ax[0].set_title(vres["case_label"])
             ax[0].set_ylim([1000,100])
             fig.colorbar(cnModel, ax=ax[0])
             if have_ref:
@@ -170,7 +177,7 @@ def transect_plots(adf, var, plot_loc, plot_type, case_name):
                 fig.colorbar(cnRef, ax=ax[1])
         else:
             fig, ax = plt.subplots()
-            ax.plot(smdata.lon, smdata, label="CAM")
+            ax.plot(smdata.lon, smdata, label=vres["case_label"])
             if have_ref:
                 sodata = odata.sel(time=vals).mean(dim='time')
                 ax.plot(sodata.lon, sodata, label=adf.ref_labels[var])
@@ -187,8 +194,11 @@ def region_climo_plots(adf, var, vres, plot_loc, plot_type, case_name):
     have_ref = var in adf.ref_var_nam
     if not have_ref:
         print(f"No reference data found for variable: {var}")
+        mdata = adf.load_climo_da(case_name, var)
     else:
+        mdata = adf.load_regrid_da(case_name, var)
         odata = adf.load_reference_da(var)
+        print(f"DEBUG: coords: {mdata.coords = }, {odata.coords = }")
         if odata['lon'].min() < 0:
             print("Flip longitude on reference data.")
             odata = lonFlip(odata)
@@ -200,7 +210,14 @@ def region_climo_plots(adf, var, vres, plot_loc, plot_type, case_name):
                 print(f"Time goes from 0 to 11 instead of 1 to 12 - Adjust")
                 odata = odata.assign_coords({"time":odata.time+1})
 
-    mdata = adf.load_climo_da(case_name, var)
+    units_label = mdata.attrs.get("units", " ")
+    if mdata is None:
+        print(f"FAIL: climo file missing for {case_name}, {var = }")
+        return None
+    if mdata['lon'].min() < 0:
+        print("Flip longitude on case data.")
+        mdata = lonFlip(mdata)
+
     mdata = mdata.sel(lat=slice(sep_sc_box.south-10, sep_sc_box.north+10), lon=slice(sep_sc_box.west-10, sep_sc_box.east+10))
 
     # seasonal plots
@@ -222,17 +239,20 @@ def region_climo_plots(adf, var, vres, plot_loc, plot_type, case_name):
             cmap = cp_info['cmap1']
             cnrm = cp_info['norm1']
             lvls = cp_info['levels1']
+            dmap = cp_info['cmapdiff']
+            dnrm = cp_info['normdiff']
+            dlvl = cp_info['levelsdiff']
 
-            fig, ax = plt.subplots(ncols=2, subplot_kw={"projection":ccrs.PlateCarree()})
+            fig, ax = plt.subplots(ncols=3, subplot_kw={"projection":ccrs.PlateCarree()})
             fig.suptitle(f"Southeast Pacific, {var}, {season}")
             mlon, mlat = np.meshgrid(smdata.lon, smdata.lat)
             img0 = ax[0].pcolormesh(mlon, mlat, smdata,  transform=ccrs.PlateCarree(),
                                     norm=cnrm, cmap=cmap)
-            ax[0].set_title("CAM")
+            ax[0].set_title(vres["case_label"])
             CS0 = ax[0].contour(mlon, mlat, smdata, transform=ccrs.PlateCarree(), levels=lvls, colors='black')
-            fig.colorbar(img0, ax=ax[0], shrink=0.5)
+            fig.colorbar(img0, ax=ax[0], shrink=0.3, label=units_label)
             ax[0].clabel(CS0, CS0.levels, inline=True, fontsize=10)
-            # draw the region boundary 
+            # draw the region boundary
             ax[0].plot([sep_sc_box.west, sep_sc_box.east, sep_sc_box.east, sep_sc_box.west, sep_sc_box.west],
                        [sep_sc_box.south, sep_sc_box.south, sep_sc_box.north, sep_sc_box.north, sep_sc_box.south],
                        transform=ccrs.PlateCarree(), color='lightgray')
@@ -250,10 +270,16 @@ def region_climo_plots(adf, var, vres, plot_loc, plot_type, case_name):
                     [sep_sc_box.south, sep_sc_box.south, sep_sc_box.north, sep_sc_box.north, sep_sc_box.south],
                     transform=ccrs.PlateCarree(), color='lightgray')
                 ax[1].coastlines()
-
-                fig.colorbar(img1, ax=ax[1], shrink=0.5)
+                fig.colorbar(img1, ax=ax[1], shrink=0.3)
+                # Try to plot the difference -- but only if the arrays are same size:
+                if smdata.shape == sodata.shape:
+                    difference = smdata-sodata
+                    dimg = ax[2].pcolormesh(rlon, rlat, difference, transform=ccrs.PlateCarree(),norm=dnrm,cmap=dmap)
+                    ax[2].coastlines()
+                    fig.colorbar(dimg, ax=ax[2], shrink=0.3)
             else:
                 ax[1].set_axis_off()
+                ax[2].set_axis_off()
         fig.savefig(plot_name, bbox_inches='tight')
         plt.close(fig)
 
@@ -302,7 +328,7 @@ def seasonal_cycle_plot(adf, var, vres, plot_loc, plot_type, case_name):
         fig, ax = plt.subplots(ncols=2,nrows=2,constrained_layout=True)
         mmonth, mlev = np.meshgrid(np.arange(1,13), mdata.lev)
         cnModel = ax[0,0].contourf(mmonth, mlev, avganncyc)
-        ax[0,0].set_title(f"CAM")
+        ax[0,0].set_title(vres["case_label"])
         rmonth, rlev = np.meshgrid(np.arange(1,13), odata.lev)
         cnRef = ax[0,1].contourf(rmonth, rlev, oanncyc)
         ax[0,1].set_title(f"Reference")
@@ -310,29 +336,32 @@ def seasonal_cycle_plot(adf, var, vres, plot_loc, plot_type, case_name):
             print("Shapes agree, will make difference panel")
             cnDiff = ax[1,0].contourf(rmonth, rlev, avganncyc-oanncyc)
             fig.colorbar(cnDiff, ax=ax[1,0])
-            ax[1,0].title("Model - Ref", loc='left')
+            ax[1,0].title(f'{vres["case_label"]} - {adf.ref_labels[var]}', loc='left')
         fig.colorbar(cnModel, ax=ax[0,0])
         fig.colorbar(cnRef, ax=ax[0,1])
 
     else:
         fig, ax = plt.subplots(nrows=2, sharex=True, constrained_layout=True)
-        ax[0].plot(np.arange(1,13), avganncyc, label='CAM')
-        ax[0].plot(np.arange(1,13), oanncyc, label=adf.ref_labels[var], color='gray')
+        ax[0].plot(np.arange(1,13), avganncyc, label=vres["case_label"])
+        if have_ref:
+            ax[0].plot(np.arange(1,13), oanncyc, label=adf.ref_labels[var], color='gray')
         ax[0].legend()
         ax[0].set_title(f"{var} SEPac annual cycle", loc='left')
         # ax[0].set_xlabel("MONTH")
         if 'units' in mdata.attrs:
             ax[0].set_ylabel(mdata.attrs['units'])
-        print(f"COORDS: {avganncyc.coords = }, {oanncyc.coords = }")
-        ax[1].plot(np.arange(1,13), avganncyc-oanncyc)
-        ax[1].set_title("CAM - Reference")
-        if 'units' in mdata.attrs:
-            ax[1].set_ylabel(mdata.attrs['units'])
-        ax[1].set_xlabel("MONTH")
+
         [a.spines['top'].set_visible(False) for a in ax]
         [a.spines['right'].set_visible(False) for a in ax]
         [a.set_xlim([1,12]) for a in ax]
 
-
+        if have_ref:
+            ax[1].plot(np.arange(1,13), avganncyc-oanncyc)
+            ax[1].set_title(f'{vres["case_label"]} - {adf.ref_labels[var]}')
+            if 'units' in mdata.attrs:
+                ax[1].set_ylabel(mdata.attrs['units'])
+            ax[1].set_xlabel("MONTH")
+        else:
+            ax[1].set_axis_off()
     fig.savefig(plot_name, bbox_inches='tight')
     plt.close(fig)

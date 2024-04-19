@@ -90,15 +90,14 @@ class AdfData:
     def get_reference_climo_file(self, var):
         """Return a list of files to be used as reference (aka baseline) for variable var."""
         if self.reference_is_obs:
-            return [self.ref_var_loc[var]]
-        else:
-            self.ref_loc = self.adf.get_baseline_info("cam_climo_loc")
-            # NOTE: originally had this looking for *_baseline.nc 
-            fils = sorted(Path(self.ref_loc).glob(f"{self.ref_case_label}_{var}_climo.nc"))
-            if fils:
-                return fils
-            else:
-                return None
+            fils = self.ref_var_loc.get(var, None)
+            return [fils] if fils is not None else None
+        self.ref_loc = self.adf.get_baseline_info("cam_climo_loc")
+        # NOTE: originally had this looking for *_baseline.nc
+        fils = sorted(Path(self.ref_loc).glob(f"{self.ref_case_label}_{var}_climo.nc"))
+        if fils:
+            return fils
+        return None
 
     def load_reference_dataset(self, var):
         fils = self.get_reference_climo_file(var)
@@ -192,6 +191,7 @@ class AdfData:
             ds = xr.open_mfdataset(fils, combine='by_coords')
         else:
             sfil = str(fils[0])
+            assert Path(sfil).is_file(), f"Needs to be a file: {sfil}"
             ds = xr.open_dataset(sfil)
         if ds is None:
             warnings.warn(f"invalid data on load_dataset")
