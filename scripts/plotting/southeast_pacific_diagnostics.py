@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 
 from adf_dataset import AdfData
 import plotting_functions as pf
@@ -46,7 +47,7 @@ seasons = {"ANN": np.arange(1,13,1),
 seasonal_cycle_var_list = ["PRECT", "SST", "CLDTOT", "SWCF", 'FSDS', 'LWCF', 'FLDS', 'FSNS', 'FSNSC', 'FLNS', 'FLNSC', 'TGCLDLWP', 'ACTREL',
                            'CDNUMC','LHFLX', 'SHFLX', 'OMEGA500', 'PBLH', 'PRECL', 'PRECC', 'PRECT', 'TMQ']
 
-transect_var_list = ['CLOUD', 'CLDLIQ', 'T', 'Q']
+transect_var_list = ['CLOUD', 'CLDLIQ', 'T', 'Q', 'OMEGA']
 
 
 def southeast_pacific_diagnostics(adfobj):
@@ -147,6 +148,7 @@ def transect_plots(adf, var, vres, plot_loc, plot_type, case_name):
     cmap = cp_info['cmap1']
     cnrm = cp_info['norm1']
     lvls = cp_info['levels1']
+    print(f"INFO: plotting info: {cmap = }, {cnrm = }, {lvls = }")
     # Check if we have PMID to move to pressure levels:
     have_pmid = "PMID" in adf.var_list
     if have_pmid:
@@ -182,7 +184,7 @@ def transect_plots(adf, var, vres, plot_loc, plot_type, case_name):
                 sodata = odata.sel(time=vals).mean(dim='time')
                 ax.plot(sodata.lon, sodata, label=adf.ref_labels[var])
             ax.legend()
-        fig.savefig(plot_name, bbox_inches='tight')
+        fig.savefig(plot_name, bbox_inches='tight', dpi=300)
         plt.close(fig)
 
 
@@ -198,9 +200,8 @@ def region_climo_plots(adf, var, vres, plot_loc, plot_type, case_name):
     else:
         mdata = adf.load_regrid_da(case_name, var)
         odata = adf.load_reference_da(var)
-        print(f"DEBUG: coords: {mdata.coords = }, {odata.coords = }")
         if odata['lon'].min() < 0:
-            print("Flip longitude on reference data.")
+            print("INFO: Flip longitude on reference data.")
             odata = lonFlip(odata)
         odata = odata.sel(lat=slice(sep_sc_box.south-10, sep_sc_box.north+10), lon=slice(sep_sc_box.west-10, sep_sc_box.east+10))
         if 'month' in odata.dims:
@@ -210,6 +211,7 @@ def region_climo_plots(adf, var, vres, plot_loc, plot_type, case_name):
                 print(f"Time goes from 0 to 11 instead of 1 to 12 - Adjust")
                 odata = odata.assign_coords({"time":odata.time+1})
 
+    # print(mdata)
     units_label = mdata.attrs.get("units", " ")
     if mdata is None:
         print(f"FAIL: climo file missing for {case_name}, {var = }")
@@ -218,7 +220,13 @@ def region_climo_plots(adf, var, vres, plot_loc, plot_type, case_name):
         print("Flip longitude on case data.")
         mdata = lonFlip(mdata)
 
+
+    print(f"CAM (1): {mdata.min().item() = }, {mdata.max().item() = }, number not missing: {np.sum(np.isnan(mdata))}")
     mdata = mdata.sel(lat=slice(sep_sc_box.south-10, sep_sc_box.north+10), lon=slice(sep_sc_box.west-10, sep_sc_box.east+10))
+
+    if have_ref:
+        print(f"REF: {odata.min().item() = }, {odata.max().item() = }")
+    print(f"CAM: {mdata.min().item() = }, {mdata.max().item() = }, number not missing: {np.sum(np.isnan(mdata))}")
 
     # seasonal plots
     for season, vals in seasons.items():
@@ -243,7 +251,7 @@ def region_climo_plots(adf, var, vres, plot_loc, plot_type, case_name):
             dnrm = cp_info['normdiff']
             dlvl = cp_info['levelsdiff']
 
-            fig, ax = plt.subplots(ncols=3, subplot_kw={"projection":ccrs.PlateCarree()})
+            fig, ax = plt.subplots(figsize=(12,3.25), ncols=3, subplot_kw={"projection":ccrs.PlateCarree()})
             fig.suptitle(f"Southeast Pacific, {var}, {season}")
             mlon, mlat = np.meshgrid(smdata.lon, smdata.lat)
             img0 = ax[0].pcolormesh(mlon, mlat, smdata,  transform=ccrs.PlateCarree(),
@@ -257,6 +265,7 @@ def region_climo_plots(adf, var, vres, plot_loc, plot_type, case_name):
                        [sep_sc_box.south, sep_sc_box.south, sep_sc_box.north, sep_sc_box.north, sep_sc_box.south],
                        transform=ccrs.PlateCarree(), color='lightgray')
             ax[0].coastlines()
+            ax[0].add_feature(cfeature.LAND, alpha=0.5, zorder=100)
             if have_ref:
                 # sodata = odata.sel(time=vals).mean(dim='time')
                 rlon, rlat = np.meshgrid(sodata['lon'], sodata['lat'])
@@ -270,17 +279,19 @@ def region_climo_plots(adf, var, vres, plot_loc, plot_type, case_name):
                     [sep_sc_box.south, sep_sc_box.south, sep_sc_box.north, sep_sc_box.north, sep_sc_box.south],
                     transform=ccrs.PlateCarree(), color='lightgray')
                 ax[1].coastlines()
+                ax[1].add_feature(cfeature.LAND, alpha=0.5, zorder=10)
                 fig.colorbar(img1, ax=ax[1], shrink=0.3)
                 # Try to plot the difference -- but only if the arrays are same size:
                 if smdata.shape == sodata.shape:
                     difference = smdata-sodata
                     dimg = ax[2].pcolormesh(rlon, rlat, difference, transform=ccrs.PlateCarree(),norm=dnrm,cmap=dmap)
                     ax[2].coastlines()
+                    ax[2].add_feature(cfeature.LAND, alpha=0.5, zorder=5)
                     fig.colorbar(dimg, ax=ax[2], shrink=0.3)
             else:
                 ax[1].set_axis_off()
                 ax[2].set_axis_off()
-        fig.savefig(plot_name, bbox_inches='tight')
+        fig.savefig(plot_name, bbox_inches='tight', dpi=300)
         plt.close(fig)
 
 def seasonal_cycle_plot(adf, var, vres, plot_loc, plot_type, case_name):
@@ -363,5 +374,5 @@ def seasonal_cycle_plot(adf, var, vres, plot_loc, plot_type, case_name):
             ax[1].set_xlabel("MONTH")
         else:
             ax[1].set_axis_off()
-    fig.savefig(plot_name, bbox_inches='tight')
+    fig.savefig(plot_name, bbox_inches='tight', dpi=300)
     plt.close(fig)

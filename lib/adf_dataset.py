@@ -178,6 +178,8 @@ class AdfData:
         if not fils:
             print(f"ERROR: Did not find regrid file(s) for case: {case}, variable: {field}")
             return None
+        else:
+            print(f"INFO: load_regrid_da found {len(fils)} files to load for {field}")  # TODO: change to logging to make this usually unseen
         return self.load_da(fils, field)
 
     def get_file_list():
@@ -203,8 +205,9 @@ class AdfData:
             print(f"ERROR: Load failed for {variablename}")
             return None
         da = (ds[variablename]).squeeze()
+        u = da.attrs.get('units', 'none')
         if variablename in self.res:
             vres = self.res[variablename]
             da = da * vres.get("scale_factor",1) + vres.get("add_offset", 0)
-            da.attrs['units'] = vres.get("new_unit", da.attrs.get('units', 'none'))
+            da.attrs['units'] = vres.get("new_unit", u) # probably should set to NONE unless scale=1 & offset=0
         return da

@@ -1796,7 +1796,7 @@ def prep_contour_plot(adata, bdata, diffdata, **kwargs):
         levels1 = []
     #End if
 
-    if ('colormap' not in kwargs) and ('contour_levels' not in kwargs):
+    if ('colormap' not in kwargs) and (('contour_levels' not in kwargs) or ('contour_levels_range' not in kwargs)):
         if ((minval < 0) and (0 < maxval)) and mplv > 2:
             norm1 = normfunc(vmin=minval, vmax=maxval, vcenter=0.0)
         else:

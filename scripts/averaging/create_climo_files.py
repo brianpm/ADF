@@ -169,13 +169,16 @@ def create_climo_files(adf, clobber=False, search=None):
 
             list_of_arguments.append((ts_files, syr, eyr, output_file))
 
-
+        print("LIST OF ARGUMENTS:")
+        [print(loa) for loa in list_of_arguments]
         #End of var_list loop
         #--------------------
-
+        print(f"START THE POOL FOR CLIMO GENERATION! (number of cpu: {number_of_cpu})")
         # Parallelize the computation using multiprocessing pool:
-        with mp.Pool(processes=number_of_cpu) as p:
-            result = p.starmap(process_variable, list_of_arguments)
+        # with mp.Pool(processes=number_of_cpu) as p:
+        #     result = p.starmap(process_variable, list_of_arguments)
+        for loa in list_of_arguments:
+            result = process_variable(*loa)
 
     #End of model case loop
     #----------------------
@@ -192,10 +195,12 @@ def process_variable(ts_files, syr, eyr, output_file):
     Compute and save the climatology file.
     '''
     #Read in files via xarray (xr):
+    print("START CLIMO GEN.")
     if len(ts_files) == 1:
         cam_ts_data = xr.open_dataset(ts_files[0], decode_times=True)
     else:
         cam_ts_data = xr.open_mfdataset(ts_files, decode_times=True, combine='by_coords')
+    print("Open data set complete.")
     #Average time dimension over time bounds, if bounds exist:
     if 'time_bnds' in cam_ts_data:
         time = cam_ts_data['time']
@@ -204,12 +209,15 @@ def process_variable(ts_files, syr, eyr, output_file):
         cam_ts_data['time'] = time
         cam_ts_data.assign_coords(time=time)
         cam_ts_data = xr.decode_cf(cam_ts_data)
+    print("Time bounds averaged.")
     #Extract data subset using provided year bounds:
-    cam_ts_data = cam_ts_data.sel(time=slice(syr, eyr))
+    cam_ts_data = cam_ts_data.sel(time=slice(syr, eyr)).compute()
+    print("Time series loaded into memory.")
     #Group time series values by month, and average those months together:
     cam_climo_data = cam_ts_data.groupby('time.month').mean(dim='time')
     #Rename "months" to "time":
     cam_climo_data = cam_climo_data.rename({'month':'time'})
+    print("Climo ready, save to output.")
     #Set netCDF encoding method (deal with getting non-nan fill values):
     enc_dv = {xname: {'_FillValue': None, 'zlib': True, 'complevel': 4} for xname in cam_climo_data.data_vars}
     enc_c  = {xname: {'_FillValue': None} for xname in cam_climo_data.coords}
@@ -217,6 +225,7 @@ def process_variable(ts_files, syr, eyr, output_file):
 
     #Output variable climatology to NetCDF-4 file:
     cam_climo_data.to_netcdf(output_file, format='NETCDF4', encoding=enc)
+    print('Save complete.')
     return 1  # All funcs return something. Could do error checking with this if needed.
 
 

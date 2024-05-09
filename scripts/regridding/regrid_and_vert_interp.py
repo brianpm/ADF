@@ -1,5 +1,6 @@
 #Import standard modules:
 import xarray as xr
+import numpy as np
 
 def regrid_and_vert_interp(adf):
 
@@ -54,6 +55,9 @@ def regrid_and_vert_interp(adf):
     output_loc       = adf.get_basic_info("cam_regrid_loc", required=True)
     var_list         = adf.diag_var_list
     var_defaults     = adf.variable_defaults
+
+    tgt_levels = adf.get_basic_info("pressure_level_values", required=False)
+    print(f"TESTING: tgt_levels is {tgt_levels}")
 
     #CAM simulation variables (these quantities are always lists):
     case_names = adf.get_cam_info("cam_case_name", required=True)
@@ -237,6 +241,7 @@ def regrid_and_vert_interp(adf):
                     #Perform regridding and interpolation of variable:
                     rgdata_interp = _regrid_and_interpolate_levs(mclim_ds, var,
                                                                  regrid_dataset=tclim_ds,
+                                                                 tgt_levels=tgt_levels,
                                                                  **regrid_kwargs)
 
                     #Extract defaults for variable:
@@ -304,6 +309,7 @@ def regrid_and_vert_interp(adf):
 
                         #Generate vertically-interpolated baseline dataset:
                         tgdata_interp = _regrid_and_interpolate_levs(tclim_ds, var,
+                                                                     tgt_levels=tgt_levels,
                                                                      **regrid_kwargs)
 
                         if tgdata_interp is None:
@@ -399,6 +405,8 @@ def _regrid_and_interpolate_levs(model_dataset, var_name, regrid_dataset=None, r
 
     #Extract variable info from model data (and remove any degenerate dimensions):
     mdata = model_dataset[var_name].squeeze()
+    if not hasattr(mdata, "name"):
+        mdata.name = var_name
     mdat_ofrac = None
     #if regrid_ofrac:
     #    if 'OCNFRAC' in model_dataset:
@@ -530,13 +538,13 @@ def _regrid_and_interpolate_levs(model_dataset, var_name, regrid_dataset=None, r
         #End if
 
         #Regrid model data to match target grid:
-        rgdata = regrid_data(mdata, tgrid, method=1)
+        rgdata = regrid_data(mdata, tgrid, method=3)
         if mdat_ofrac:
-            rgofrac = regrid_data(mdat_ofrac, tgrid, method=1)
+            rgofrac = regrid_data(mdat_ofrac, tgrid, method=3)
         #Regrid surface pressure if need be:
         if has_lev:
             if not regridded_ps:
-                rg_ps = regrid_data(mps, tgrid, method=1)
+                rg_ps = regrid_data(mps, tgrid, method=3)
             else:
                 rg_ps = mps
             #End if
@@ -544,7 +552,7 @@ def _regrid_and_interpolate_levs(model_dataset, var_name, regrid_dataset=None, r
             #Also regrid mid-level pressure if need be:
             if vert_coord_type == "height":
                 if not regridded_pmid:
-                    rg_pmid = regrid_data(mpmid, tgrid, method=1)
+                    rg_pmid = regrid_data(mpmid, tgrid, method=3)
                 else:
                     rg_pmid = mpmid
                 #End if
@@ -567,9 +575,12 @@ def _regrid_and_interpolate_levs(model_dataset, var_name, regrid_dataset=None, r
     if has_lev:
 
         if vert_coord_type == "hybrid":
+            tgt_levels = kwargs.get("tgt_levels",None)
+            if isinstance(tgt_levels, list):
+                tgt_levels = np.array(tgt_levels)
             #Interpolate from hybrid sigma-pressure to the standard pressure levels:
             rgdata_interp = pf.lev_to_plev(rgdata, rg_ps, mhya, mhyb, P0=P0, \
-                                           convert_to_mb=True)
+                                           convert_to_mb=True, new_levels=tgt_levels)
         elif vert_coord_type == "height":
             #Interpolate variable using mid-level pressure (PMID):
             rgdata_interp = pf.pmid_to_plev(rgdata, rg_pmid, convert_to_mb=True)
@@ -625,7 +636,7 @@ def save_to_nc(tosave, outname, attrs=None, proc=None):
 
 #####
 
-def regrid_data(fromthis, tothis, method=1):
+def regrid_data(fromthis, tothis, method=3):
     """Regrid data using various different methods"""
 
     if method == 1:
@@ -644,16 +655,19 @@ def regrid_data(fromthis, tothis, method=1):
         coords['lon'] = newlon
         return fromthis.interp(coords)
     elif method == 3:
+        import xesmf as xe
         newlat = tothis['lat']
         newlon = tothis['lon']
-        ds_out = xr.Dataset({'lat': newlat, 'lon': newlon})
-        regridder = xe.Regridder(fromthis, ds_out, 'bilinear')
-        return regridder(fromthis)
+        ds_out = xr.Dataset({'lat':(["lat"], newlat.data), 'lon': (["lon"], newlon.data)})
+        regridder = xe.Regridder(fromthis, ds_out, 'bilinear', periodic=True)
+        return regridder(fromthis, keep_attrs=True)
     elif method==4:
+        import geocat.comp as gc
         # geocat
         newlat = tothis['lat']
         newlon = tothis['lon']
-        result = geocat.comp.linint2(fromthis, newlon, newlat, False)
+        # result = geocat.comp.linint2(fromthis, newlon, newlat, False)
+        result = gc.interp_multidim(fromthis, newlat, newlon, cyclic=True)
         result.name = fromthis.name
         return result
     #End if
