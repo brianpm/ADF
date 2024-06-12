@@ -199,7 +199,7 @@ def process_variable(ts_files, syr, eyr, output_file):
     if len(ts_files) == 1:
         cam_ts_data = xr.open_dataset(ts_files[0], decode_times=True)
     else:
-        cam_ts_data = xr.open_mfdataset(ts_files, decode_times=True, combine='by_coords')
+        cam_ts_data = xr.open_mfdataset(ts_files, decode_times=True, combine='by_coords').compute()
     print("Open data set complete.")
     #Average time dimension over time bounds, if bounds exist:
     if 'time_bnds' in cam_ts_data:
