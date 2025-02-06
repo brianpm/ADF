@@ -260,6 +260,7 @@ def cosp_calipso_dynreg_2501(adfobj):
                         dims=[f"{xvariable}_bin_center", zdim],
                         coords={f"{xvariable}_bin_center": bin_ctr, zdim: zcoord},
                         name=yvariable,
+                        attrs={"zdim_name":zdim}
                     )
                     binned_case.append(yxr.copy())
                     if yvariable not in vdim:
@@ -296,11 +297,17 @@ def cosp_calipso_dynreg_2501(adfobj):
             print(f"Saved {v}({dyn_var}): {str(plot_name)}")
         elif vdim[v] == 1:
             fig2, ax2 = plt.subplots(nrows=len(binned_vars))
-            mb, mz = np.meshgrid(ds[f'{dyn_var}_bin_center'], ds[zcoord])
+            print(f"CHECK ON NUMBER OF ROWS: {len(binned_vars)}")
             rownum = 0
+            if len(binned_vars) == 1:
+                aa = [ax2]
+            else:
+                aa = ax2
             for row, data in binned_vars.items():
-                ax2[rownum].pcolormesh(mb, mz, data[v].transpose(), shading="auto", norm=cnorm)
-                ax2[rownum].contour(
+                print(f"{row = }")
+                mb, mz = np.meshgrid(data[f'{dyn_var}_bin_center'], data[data.attrs['zdim_name']])
+                aa[rownum].pcolormesh(mb, mz, data[v].transpose(), shading="auto", norm=cnorm)
+                aa[rownum].contour(
                     mb,
                     mz,
                     data[v].transpose(),
