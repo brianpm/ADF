@@ -241,7 +241,7 @@ class AdfInfo(AdfConfig):
             # End if
 
             # Check if history file path exists:
-            if any(baseline_hist_locs):
+            elif baseline_hist_locs and any(baseline_hist_locs):
                 #Check if user provided
                 if not baseline_hist_str:
                     baseline_hist_str = ['cam.h0a']
@@ -256,7 +256,6 @@ class AdfInfo(AdfConfig):
                 base_hist_str = baseline_hist_str[0]
                 starting_location = Path(baseline_hist_locs)
                 print(f"\tChecking history files in '{starting_location}'")
-                file_list = sorted(starting_location.glob("*" + base_hist_str + ".*.nc"))
 
                 #Check if the history file location exists
                 if not starting_location.is_dir():
@@ -322,10 +321,15 @@ class AdfInfo(AdfConfig):
                     print(msg)
                     eyear_baseline = base_found_eyr
 
-                #Grab baseline nickname
-                base_nickname = self.get_baseline_info('case_nickname')
-                if base_nickname is None:
-                    base_nickname = data_name
+            else:
+                #Neither pre-made time series nor a history file location was provided,
+                #so years can only come from explicit start_year/end_year config entries.
+                if (syear_baseline is None) or (eyear_baseline is None):
+                    emsg = f"Unable to determine baseline years for '{data_name}'.\n"
+                    emsg += "\tProvide 'cam_ts_loc' (with 'cam_ts_done'), or 'cam_hist_loc', or "
+                    emsg += "explicit 'start_year' and 'end_year' in the 'diag_cam_baseline_climo' "
+                    emsg += "section of your config file."
+                    self.end_diag_fail(emsg)
             #End if
 
             #Grab baseline nickname
