@@ -125,7 +125,7 @@ class AdfData:
         """Return list of test time series files.
 
         If hist_str is given, restrict the search to that history stream
-        (time series files are named {case}.{hist_str}.{field}.*nc).
+        (time series files are named {case}.{hist_str}.{field}.*.nc).
         """
         # list of paths (could be multiple cases)
         ts_locs = self.adf.get_cam_info("cam_ts_loc", required=True)
